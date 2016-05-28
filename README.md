@@ -5,6 +5,7 @@ A simple tool to add rules to haproxy.cfg and reload the [Haproxy](https://hub.d
 git clone git@github.com:adnaan/hapreload.git
 cd hapreload
 export DOCKER_HOST="host-ip:port"
+export HAPROXY_CONTAINER_NAME="haproxy"
 go get
 go run hapreload.go
 ```

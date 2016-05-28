@@ -20,6 +20,6 @@ url = 'http://localhost:34015/haproxy'
 addArgs = {'Name':'myapp','Port':'7777','Domain':'.example.com'}
 removeArgs = {'Name':'myapp'}
 args = {}
-#print rpc_call(url, "Haproxy.Add", addArgs)
-print rpc_call(url, "Haproxy.Remove", removeArgs)
+print rpc_call(url, "Haproxy.Add", addArgs)
+#print rpc_call(url, "Haproxy.Remove", removeArgs)
 #print rpc_call(url, "Haproxy.Generate", args)

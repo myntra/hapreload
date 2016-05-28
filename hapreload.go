@@ -56,21 +56,23 @@ func (h *Haproxy) Add(r *http.Request, service *Service, result *Result) error {
 		service.Port,
 	}
 
-	// Generate docker compose
+	// Generate frontend entry
 	tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
-	f, err := os.OpenFile("./conf/"+service.Name+".frontend", os.O_CREATE|os.O_RDWR, 0777)
+	f, err := os.OpenFile("./conf/"+service.Name+".frontend", os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		*result = 0
 		return err
 	}
+	// fill in the template
 	err = tmpl.Execute(f, data)
 	if err != nil {
 		*result = 0
 		return err
 	}
 
+	// Generate backend entry
 	tmpl = template.Must(template.New("backend").Parse(backendTmpl))
-	f, err = os.OpenFile("./conf/"+service.Name+".backend", os.O_CREATE|os.O_RDWR, 0777)
+	f, err = os.OpenFile("./conf/"+service.Name+".backend", os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		*result = 0
 		return err
@@ -81,7 +83,7 @@ func (h *Haproxy) Add(r *http.Request, service *Service, result *Result) error {
 		return err
 	}
 
-	//join
+	//join all the configs
 	if err := h.generateCfg(); err != nil {
 		*result = 0
 		return err
@@ -109,7 +111,7 @@ func (h *Haproxy) Remove(r *http.Request, service *Service, result *Result) erro
 }
 
 func (h *Haproxy) generateCfg() error {
-
+	// check if haproxy.cfg already exists and take a backup
 	if _, err := os.Stat("haproxy.cfg"); !os.IsNotExist(err) {
 		err := os.Rename("haproxy.cfg", "haproxy.cfg.BAK."+string(time.Now().Format("20060102150405")))
 		if err != nil {
@@ -120,7 +122,7 @@ func (h *Haproxy) generateCfg() error {
 	var haproxyCfg []byte
 
 	var partFunc = func(part string) {
-		// walk all files in directory
+		// walk all files in the directory
 		filepath.Walk("conf", func(path string, info os.FileInfo, err error) error {
 			if !info.IsDir() && strings.HasSuffix(info.Name(), part) {
 				b, err := ioutil.ReadFile(path)
@@ -135,17 +137,20 @@ func (h *Haproxy) generateCfg() error {
 		})
 	}
 
-	partFunc(".globalcfg")
-	partFunc(".defaultcfg")
-	partFunc(".frontendcfg")
-	partFunc(".frontend")
-	partFunc(".backend")
-	ioutil.WriteFile("haproxy.cfg", haproxyCfg, 0777)
+	//append the configs in the following order
+	parts := []string{".globalcfg", ".defaultcfg", ".frontendcfg", ".frontend", ".backend"}
+	for i := range parts {
+		partFunc(parts[i])
+	}
 
+	//write the file
+	ioutil.WriteFile("haproxy.cfg", haproxyCfg, 0644)
+
+	// restart haproxy container
 	session := sh.NewSession()
 	session.SetEnv("DOCKER_HOST", os.Getenv("DOCKER_HOST"))
 	//reload
-	session.Command("docker", "kill", "-s", "HUP", "haproxy").Run()
+	session.Command("docker", "kill", "-s", "HUP", os.Getenv("HAPROXY_CONTAINER_NAME")).Run()
 
 	return nil
 
