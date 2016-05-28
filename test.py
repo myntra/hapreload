@@ -20,8 +20,9 @@ def rpc_call(url, method, args):
 addArgs = {'Name':'myapp','Port':'8080','Domain':'.github.com'}
 removeArgs = {'Name':'myapp'}
 args = {}
-if len(sys.argv) != 2:
-    print("Usage ./test.py http://HAPROXY-MACHINE-IP:34015/haproxy add/remove/generate")
+if len(sys.argv) != 3:
+    print("Usage ./test.py http://HAPROXY-MACHINE-IP:34015/haproxy <add/remove/generate>")
+    sys.exit()
 
 url = str(sys.argv[1])
 method = str(sys.argv[2])
