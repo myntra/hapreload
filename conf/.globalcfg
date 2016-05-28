@@ -1,0 +1,7 @@
+###
+global
+        pidfile     /var/run/haproxy.pid
+        maxconn     4000
+        ulimit-n    64000
+        daemon
+        stats socket /tmp/haproxy
