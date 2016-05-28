@@ -17,7 +17,7 @@ Methods
 
 ```bash
 url = 'http://localhost:34015/haproxy'
-addArgs = {'Name':'myapp','Port':'7777','Domain':'.github.com'}
+addArgs = {'Name':'myapp','Port':'7777','Domain':'.docker.com'}
 removeArgs = {'Name':'myapp'}
 args = {}
 print rpc_call(url, "Haproxy.Add", addArgs)
@@ -61,7 +61,7 @@ docker run --net=my-net --net-alias=myapp.docker.com --name simplehttpserver -d 
 
 # add rule to haproxy
 ./test.py http://192.168.99.102/haproxy add
-wget -qO- myapp.github.com/test
+wget -qO- myapp.docker.com/test
 
 ```
 
