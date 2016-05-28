@@ -7,6 +7,19 @@ cd hapreload
 export DOCKER_HOST="host-ip:port"
 go run hapreload.go
 ```
+The tool uses go package text/template to generate frontend and backend entries.
+
+```bash
+const frontendTmpl = `
+acl is{{.Acl}} hdr_beg(host) {{.Hostname}}
+use_backend {{.Backend}} if is{{.Acl}}
+`
+const backendTmpl = `
+backend {{.Backend}}
+  server {{.Backend}} {{.Hostname}}:{{.Port}} check inter 10000
+`
+```
+Since the purpose is to be simple, I would modify the code for a different entry.
 
 Example usage
 
