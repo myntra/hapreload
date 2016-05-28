@@ -25,7 +25,7 @@ backend {{.Backend}}
   server {{.Backend}} {{.Hostname}}:{{.Port}} check inter 10000
 `
 
-var confPath = "/conf"
+var confPath = "/haproxy/conf"
 var haproxyPath = "/haproxy"
 
 // Service ..
