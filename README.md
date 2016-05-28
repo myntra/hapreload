@@ -7,9 +7,8 @@ cd hapreload
 export DOCKER_HOST="host-ip:port"
 export HAPROXY_CONTAINER_NAME="haproxy"
 go get
-go run hapreload.go
-# GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .
-# ./hapreload
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .
+./hapreload
 ```
 The tool uses go package text/template to generate frontend and backend entries.
 
@@ -23,7 +22,6 @@ backend {{.Backend}}
   server {{.Backend}} {{.Hostname}}:{{.Port}} check inter 10000
 "
 ```
-Since the purpose is to be simple, I would modify the code for a different entry.
 
 Methods
 
@@ -42,6 +40,7 @@ Example Usage
 
 ```bash
 # Prerequisite: Startup a swarm following: https://docs.docker.com/engine/userguide/networking/get-started-overlay/
+docker-machine ssh mhs-demo1
 git clone https://github.com/adnaan/hapreload
 cd hapreload
 touch haproxy.cfg
@@ -53,11 +52,12 @@ echo "I am myapp" >> test/test
 # create overlay network
 eval $(docker-machine env --swarm mhs-demo0)
 docker network create --driver overlay --subnet=10.0.9.0/24 my-net
-# startup a haproxy container in the swarm
-docker run --net=my-net --name haproxy -p 80:80 -d -v  \
-  -e constraint:node==mhs-demo1 \
-  /home/docker/hapreload/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg haproxy:1.6
+# startup a haproxy container in the swarm on mhs-demo1
+docker run --net=my-net --name haproxy -p 80:80 -d -v \
+  /home/docker/hapreload/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg \
+  -e constraint:node==mhs-demo1 haproxy:1.6
 
+# create another node mhs-demo2
 # startup a simple fileserver on the same overlay network
 docker run --net=my-net --net-alias=myapp.github.com --name simplehttpserver -d -v \
   /home/docker/hapreload/test:/var/www -p 8080 -e constraint:node==mhs-demo2 \

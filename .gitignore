@@ -22,7 +22,6 @@ _testmain.go
 *.exe
 *.test
 *.prof
-haproxy.cfg
 haproxy.cfg*
 test/
 *.backend
