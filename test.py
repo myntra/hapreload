@@ -17,7 +17,7 @@ def rpc_call(url, method, args):
     response = f.read()
     return json.loads(response)
 
-addArgs = {'Name':'myapp','Port':'8080','Domain':'.github.com'}
+addArgs = {'Name':'myapp','Port':'8080','Domain':'.docker.com'}
 removeArgs = {'Name':'myapp'}
 args = {}
 if len(sys.argv) != 3:

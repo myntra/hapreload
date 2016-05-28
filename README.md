@@ -1,15 +1,5 @@
 A simple tool to add rules to haproxy.cfg and reload the [Haproxy](https://hub.docker.com/_/haproxy/) container. It uses JSON RPC and has Add, Remove and Generate Methods. Please see test.py for usage.
 
-### Usage
-```bash
-git clone git@github.com:adnaan/hapreload.git
-cd hapreload
-export DOCKER_HOST="host-ip:port"
-export HAPROXY_CONTAINER_NAME="haproxy"
-go get
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .
-./hapreload
-```
 The tool uses go package text/template to generate frontend and backend entries.
 
 ```bash
@@ -36,36 +26,38 @@ print rpc_call(url, "Haproxy.Remove", removeArgs)
 print rpc_call(url, "Haproxy.Generate", args)
 ```
 
-Example Usage
+### Swarm Example
 
 ```bash
 # Prerequisite: Startup a swarm following: https://docs.docker.com/engine/userguide/networking/get-started-overlay/
-docker-machine ssh mhs-demo1
-git clone https://github.com/adnaan/hapreload
-cd hapreload
-touch haproxy.cfg
-mkdir -p test
-echo "I am myapp" >> test/test
-./hapreload
-
-# In another terminal, as mentioned in the above link
 # create overlay network
 eval $(docker-machine env --swarm mhs-demo0)
 docker network create --driver overlay --subnet=10.0.9.0/24 my-net
-# startup a haproxy container in the swarm on mhs-demo1
+
+# start hapreload container
+docker run -d -v /home/docker/haproxy:/haproxy -e "HAPROXY_CONTAINER_NAME=haproxy" \
+  -e constraint:node==mhs-demo1 -p 34015:34015 --name hapreload adnaan/hapreload
+
+# Startup a haproxy container in the swarm on mhs-demo1(same node as hapreload)
+# start haproxy after hapreload or create   /home/docker/haproxy/haproxy.cfg
+# manually on the mhs-demo1 machine.
 docker run --net=my-net --name haproxy -p 80:80 -d -v \
-  /home/docker/hapreload/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg \
+  /home/docker/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg \
   -e constraint:node==mhs-demo1 haproxy:1.6
 
-# create another node mhs-demo2
+# create another node mhs-demo2 as in the above link
+docker-machine ssh mhs-demo2
+mkdir -p test && echo "I am myapp" >> test/test && exit
+# exit from mhs-demo2 machine
+
 # startup a simple fileserver on the same overlay network
-docker run --net=my-net --net-alias=myapp.github.com --name simplehttpserver -d -v \
-  /home/docker/hapreload/test:/var/www -p 8080 -e constraint:node==mhs-demo2 \
+docker run --net=my-net --net-alias=myapp.docker.com --name simplehttpserver -d -v \
+  /home/docker/test:/var/www -p 8080 -e constraint:node==mhs-demo2 \
   trinitronx/python-simplehttpserver
 
 # get machine IP : docker-machine ip mhs-demo1
 # add to /etc/hosts
-# myapp.github.com 192.168.99.102 (machine IP)
+# 192.168.99.102 myapp.docker.com (machine IP)
 
 # add rule to haproxy
 ./test.py http://192.168.99.102/haproxy add
