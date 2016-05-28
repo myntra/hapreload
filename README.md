@@ -42,7 +42,7 @@ docker run -d -v /home/docker/haproxy:/haproxy -e "HAPROXY_CONTAINER_NAME=haprox
 # start haproxy after hapreload or create   /home/docker/haproxy/haproxy.cfg
 # manually on the mhs-demo1 machine.
 docker run --net=my-net --name haproxy -p 80:80 -d -v \
-  /home/docker/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg \
+  /home/docker/haproxy/:/usr/local/etc/haproxy \
   -e constraint:node==mhs-demo1 haproxy:1.6
 
 # create another node mhs-demo2 as in the above link
