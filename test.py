@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import urllib2
 import json
+import sys
 
 
 def rpc_call(url, method, args):
@@ -16,10 +17,18 @@ def rpc_call(url, method, args):
     response = f.read()
     return json.loads(response)
 
-url = 'http://localhost:34015/haproxy'
-addArgs = {'Name':'myapp','Port':'7777','Domain':'.example.com'}
+addArgs = {'Name':'myapp','Port':'8080','Domain':'.github.com'}
 removeArgs = {'Name':'myapp'}
 args = {}
-print rpc_call(url, "Haproxy.Add", addArgs)
-#print rpc_call(url, "Haproxy.Remove", removeArgs)
-#print rpc_call(url, "Haproxy.Generate", args)
+if len(sys.argv) != 2:
+    print("Usage ./test.py http://HAPROXY-MACHINE-IP:34015/haproxy add/remove/generate")
+
+url = str(sys.argv[1])
+method = str(sys.argv[2])
+
+if method == "add":
+    print rpc_call(url, "Haproxy.Add", addArgs)
+if method == "remove":
+    print rpc_call(url, "Haproxy.Remove", removeArgs)
+if method == "generate":
+    print rpc_call(url, "Haproxy.Generate", args)
