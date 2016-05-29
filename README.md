@@ -13,7 +13,7 @@ backend {{.Backend}}
 "
 ```
 
-Methods
+### Methods
 
 ```bash
 url = 'http://localhost:34015/haproxy'
@@ -26,6 +26,8 @@ print rpc_call(url, "Haproxy.Remove", removeArgs)
 print rpc_call(url, "Haproxy.Generate", args)
 ```
 
+Methods to modify global,default and frontend do no exist. Assuming it's one off, we do this manually right now.
+
 ### Swarm Example
 
 ```bash
@@ -34,8 +36,10 @@ print rpc_call(url, "Haproxy.Generate", args)
 eval $(docker-machine env --swarm mhs-demo0)
 docker network create --driver overlay --subnet=10.0.9.0/24 my-net
 
-# start hapreload container
-docker run -d -v /home/docker/haproxy:/haproxy -e "HAPROXY_CONTAINER_NAME=haproxy" \
+# Start hapreload container
+docker run -d -v /home/docker/haproxy:/haproxy \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e "HAPROXY_CONTAINER_NAME=haproxy" \
   -e constraint:node==mhs-demo1 -p 34015:34015 --name hapreload adnaan/hapreload
 
 # Startup a haproxy container in the swarm on mhs-demo1(same node as hapreload)
@@ -45,12 +49,12 @@ docker run --net=my-net --name haproxy -p 80:80 -d -v \
   /home/docker/haproxy/:/usr/local/etc/haproxy \
   -e constraint:node==mhs-demo1 haproxy:1.6
 
+# Startup a simple fileserver on the same overlay network
 # create another node mhs-demo2 as in the above link
 docker-machine ssh mhs-demo2
 mkdir -p test && echo "I am myapp" >> test/test && exit
 # exit from mhs-demo2 machine
 
-# startup a simple fileserver on the same overlay network
 docker run --net=my-net --net-alias=myapp.docker.com --name simplehttpserver -d -v \
   /home/docker/test:/var/www -p 8080 -e constraint:node==mhs-demo2 \
   trinitronx/python-simplehttpserver
@@ -60,8 +64,14 @@ docker run --net=my-net --net-alias=myapp.docker.com --name simplehttpserver -d 
 # 192.168.99.102 myapp.docker.com (machine IP)
 
 # add rule to haproxy
-./test.py http://192.168.99.102/haproxy add
-wget -qO- myapp.docker.com/test
+./test.py http://192.168.99.102:34015/haproxy add && curl myapp.docker.com/test
+  I am myapp
+
+# remove rule from haproxy
+./test.py http://192.168.99.102:34015/haproxy remove && curl myapp.docker.com/test
+  <html><body><h1>503 Service Unavailable</h1>
+  No server is available to handle this request.
+  </body></html>
 
 ```
 

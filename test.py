@@ -28,8 +28,8 @@ url = str(sys.argv[1])
 method = str(sys.argv[2])
 
 if method == "add":
-    print rpc_call(url, "Haproxy.Add", addArgs)
+    rpc_call(url, "Haproxy.Add", addArgs)
 if method == "remove":
-    print rpc_call(url, "Haproxy.Remove", removeArgs)
+    rpc_call(url, "Haproxy.Remove", removeArgs)
 if method == "generate":
-    print rpc_call(url, "Haproxy.Generate", args)
+    rpc_call(url, "Haproxy.Generate", args)

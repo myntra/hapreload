@@ -46,7 +46,7 @@ type Result int
 
 // Add a frontend and backend
 func (h *Haproxy) Add(r *http.Request, service *Service, result *Result) error {
-
+	log.Printf("Add service %s.%s:%s", service.Name, service.Domain, service.Port)
 	data := struct {
 		Acl      string
 		Hostname string
@@ -99,7 +99,7 @@ func (h *Haproxy) Add(r *http.Request, service *Service, result *Result) error {
 
 // Remove a frontend and backend
 func (h *Haproxy) Remove(r *http.Request, service *Service, result *Result) error {
-
+	log.Printf("Remove service %s.%s:%s", service.Name, service.Domain, service.Port)
 	sh.Command("rm", "-f", confPath+"/"+service.Name+".backend").Run()
 	sh.Command("rm", "-f", confPath+"/"+service.Name+".frontend").Run()
 
@@ -114,6 +114,14 @@ func (h *Haproxy) Remove(r *http.Request, service *Service, result *Result) erro
 }
 
 func (h *Haproxy) generateCfg() error {
+	// if conf doesn't exist , create from default
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		_, err := sh.Command("cp", "-rf", "/default_conf", confPath).Output()
+		if err != nil {
+			log.Println("error:", err.Error())
+		}
+	}
+
 	// check if haproxy.cfg already exists and take a backup
 	if _, err := os.Stat(haproxyPath + "/haproxy.cfg"); !os.IsNotExist(err) {
 		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+string(time.Now().Format("20060102150405")))
@@ -127,6 +135,9 @@ func (h *Haproxy) generateCfg() error {
 	var partFunc = func(part string) {
 		// walk all files in the directory
 		filepath.Walk(confPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
 			if !info.IsDir() && strings.HasSuffix(info.Name(), part) {
 				b, err := ioutil.ReadFile(path)
 				if err != nil {
@@ -153,23 +164,28 @@ func (h *Haproxy) generateCfg() error {
 	session := sh.NewSession()
 	//reload
 	haproxyName := os.Getenv("HAPROXY_CONTAINER_NAME")
-	out, _ := session.Command("docker", "inspect", "-f", "{{.State.Running}}", haproxyName).Output()
+	out, err := session.Command("docker", "inspect", "-f", "{{.State.Running}}", haproxyName).Output()
+	if err != nil {
+		log.Println("error:", err.Error())
+	}
+	log.Println("Haproxy isRunning", string(out))
 	if strings.Contains(string(out), "false") {
 		log.Printf("Can't reload. %v is not running", haproxyName)
 		return nil
 	}
 
 	log.Println("Reloading haproxy container....", haproxyName)
-	out, _ = session.Command("docker", "kill", "-s", "HUP", haproxyName).Output()
-	log.Println(string(out))
-	log.Println("reloaded.")
+	out, err = session.Command("docker", "kill", "-s", "HUP", haproxyName).Output()
+	if err != nil {
+		log.Println("error:", err.Error())
+	}
+	log.Println("isReloaded: ", string(out))
 	return nil
 
 }
 
 // Generate regenerates haproxy config
 func (h *Haproxy) Generate(r *http.Request, service *Service, result *Result) error {
-
 	if err := h.generateCfg(); err != nil {
 		*result = 0
 		return err

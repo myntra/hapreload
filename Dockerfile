@@ -1,10 +1,10 @@
-FROM alpine
-RUN apk add --update ca-certificates
+FROM looztra/alpine-docker-client
 EXPOSE 34015
-RUN mkdir -p /haproxy
+RUN mkdir /haproxy
+ADD conf /default_conf
 # GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .
-ADD hapreload /hapreload
-ENV DOCKER_HOST tcp://localhost:2376
+ADD hapreload /usr/bin/hapreload
+RUN chmod +x /usr/bin/hapreload
 ENV HAPROXY_CONTAINER_NAME haproxy
-ENTRYPOINT ["/hapreload"]
-CMD ["/hapreload"]
+ENTRYPOINT ["/usr/bin/hapreload"]
+CMD ["/usr/bin/hapreload"]
