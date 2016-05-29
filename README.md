@@ -1,4 +1,5 @@
-A simple tool to add rules to haproxy.cfg and reload the [Haproxy](https://hub.docker.com/_/haproxy/) container. It uses JSON RPC and has Add, Remove, Generate Methods. Please see test.py for usage.
+A simple tool to add rules to haproxy.cfg and reload the [Haproxy](https://hub.docker.com/_/haproxy/) container.
+It uses JSON RPC and has Add, Remove, Generate Methods. Please see test.py for usage.
 
 The tool uses go package text/template to generate frontend and backend entries.
 
@@ -26,7 +27,8 @@ print rpc_call(url, "Haproxy.Remove", removeArgs)
 print rpc_call(url, "Haproxy.Generate", args)
 ```
 
-Methods to modify global,default and frontend do no exist. Assuming it's one off, we do this manually right now.
+Methods to modify global,default and frontend do not exist. Assuming it's one off,
+we do this manually right now.
 
 ### Swarm Example
 
@@ -76,7 +78,8 @@ docker run --net=my-net --net-alias=myapp.docker.com --name simplehttpserver -d 
 
 ### Build
 
-[Go](http://golang.org/doc/install.html) needs to be installed. If development machine is OSX, please do a cross platform build, as hapreload runs on an alpine image.
+[Go](http://golang.org/doc/install.html) needs to be installed. If development machine is
+OSX, please do a cross platform build, as hapreload runs on an alpine image.
 
 ```bash
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .

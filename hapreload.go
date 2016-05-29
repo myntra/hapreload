@@ -124,7 +124,8 @@ func (h *Haproxy) generateCfg() error {
 
 	// check if haproxy.cfg already exists and take a backup
 	if _, err := os.Stat(haproxyPath + "/haproxy.cfg"); !os.IsNotExist(err) {
-		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+string(time.Now().Format("20060102150405")))
+		currentTime := string(time.Now().Format("20060102150405"))
+		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+currentTime)
 		if err != nil {
 			return err
 		}
