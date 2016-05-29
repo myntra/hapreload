@@ -28,7 +28,7 @@ backend {{.Backend}}
 var confPath = "/haproxy/conf"
 var haproxyPath = "/haproxy"
 
-// Service ..
+// Service to be added
 type Service struct {
 	// service name
 	Name string
@@ -157,12 +157,11 @@ func (h *Haproxy) generateCfg() error {
 	}
 
 	//write the file
-	//log.Println(string(haproxyCfg))
 	ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
 
 	// restart haproxy container
 	session := sh.NewSession()
-	//reload
+	//reload haproxy
 	haproxyName := os.Getenv("HAPROXY_CONTAINER_NAME")
 	out, err := session.Command("docker", "inspect", "-f", "{{.State.Running}}", haproxyName).Output()
 	if err != nil {
@@ -184,7 +183,7 @@ func (h *Haproxy) generateCfg() error {
 
 }
 
-// Generate regenerates haproxy config
+// Generate regenerates haproxy config from existing configs
 func (h *Haproxy) Generate(r *http.Request, service *Service, result *Result) error {
 	if err := h.generateCfg(); err != nil {
 		*result = 0
@@ -203,7 +202,7 @@ func main() {
 		return
 	}
 
-	//for running without docker
+	//if running without docker
 	if os.Getenv("CONF_PATH") != "" {
 		confPath = os.Getenv("CONF_PATH")
 	}
@@ -219,9 +218,6 @@ func main() {
 	log.Println("Generating default haproxy.cfg")
 	haproxy.generateCfg()
 	s.RegisterService(haproxy, "")
-	if !s.HasMethod("Haproxy.Add") {
-		return
-	}
 	r := mux.NewRouter()
 	r.Handle("/haproxy", s)
 	http.ListenAndServe(":34015", r)

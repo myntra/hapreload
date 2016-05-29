@@ -1,4 +1,4 @@
-A simple tool to add rules to haproxy.cfg and reload the [Haproxy](https://hub.docker.com/_/haproxy/) container. It uses JSON RPC and has Add, Remove and Generate Methods. Please see test.py for usage.
+A simple tool to add rules to haproxy.cfg and reload the [Haproxy](https://hub.docker.com/_/haproxy/) container. It uses JSON RPC and has Add, Remove, Generate Methods. Please see test.py for usage.
 
 The tool uses go package text/template to generate frontend and backend entries.
 
@@ -31,7 +31,7 @@ Methods to modify global,default and frontend do no exist. Assuming it's one off
 ### Swarm Example
 
 ```bash
-# Prerequisite: Startup a swarm following: https://docs.docker.com/engine/userguide/networking/get-started-overlay/
+# Prerequisite: Setup a swarm: https://docs.docker.com/engine/userguide/networking/get-started-overlay/
 # create overlay network
 eval $(docker-machine env --swarm mhs-demo0)
 docker network create --driver overlay --subnet=10.0.9.0/24 my-net
@@ -75,6 +75,17 @@ docker run --net=my-net --net-alias=myapp.docker.com --name simplehttpserver -d 
 
 ```
 
-This is a hack. A better solution would be [consul template](https://github.com/hashicorp/consul-template).
+### Build
+
+[Go](http://golang.org/doc/install.html) needs to be installed. If development machine is OSX, please do a cross platform build, as hapreload runs on an alpine image.
+
+```bash
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .
+```
+A linux binary has been checked into this repo.
+
+### Roadmap
+
+Apart from bug fixes, none. This is a hack. A better solution would be [consul template](https://github.com/hashicorp/consul-template).
 
 This project is inspired from https://github.com/joewilliams/haproxy_join.
