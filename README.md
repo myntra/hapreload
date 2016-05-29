@@ -43,8 +43,7 @@ docker run -d -v /home/docker/haproxy:/haproxy \
   -e constraint:node==mhs-demo1 -p 34015:34015 --name hapreload adnaan/hapreload
 
 # Startup a haproxy container in the swarm on mhs-demo1(same node as hapreload)
-# start haproxy after hapreload or create   /home/docker/haproxy/haproxy.cfg
-# manually on the mhs-demo1 machine.
+# start haproxy after hapreload to make sure haproxy.cfg exists
 docker run --net=my-net --name haproxy -p 80:80 -d -v \
   /home/docker/haproxy/:/usr/local/etc/haproxy \
   -e constraint:node==mhs-demo1 haproxy:1.6
