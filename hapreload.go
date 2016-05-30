@@ -38,6 +38,11 @@ type Service struct {
 	Domain string
 }
 
+// Services ...
+type Services struct {
+	Services []Service
+}
+
 // Haproxy ...
 type Haproxy int
 
@@ -45,45 +50,48 @@ type Haproxy int
 type Result int
 
 // Add a frontend and backend
-func (h *Haproxy) Add(r *http.Request, service *Service, result *Result) error {
-	log.Printf("Add service %s.%s:%s", service.Name, service.Domain, service.Port)
-	data := struct {
-		Acl      string
-		Hostname string
-		Backend  string
-		Port     string
-	}{
-		strings.Title(service.Name),
-		service.Name + service.Domain,
-		service.Name,
-		service.Port,
-	}
+func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error {
 
-	// Generate frontend entry
-	tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
-	f, err := os.OpenFile(confPath+"/"+service.Name+".frontend", os.O_CREATE|os.O_RDWR, 0777)
-	if err != nil {
-		*result = 0
-		return err
-	}
-	// fill in the template
-	err = tmpl.Execute(f, data)
-	if err != nil {
-		*result = 0
-		return err
-	}
+	for _, service := range services.Services {
+		log.Printf("Add service %s%s:%s", service.Name, service.Domain, service.Port)
+		data := struct {
+			Acl      string
+			Hostname string
+			Backend  string
+			Port     string
+		}{
+			strings.Title(service.Name),
+			service.Name + service.Domain,
+			service.Name,
+			service.Port,
+		}
 
-	// Generate backend entry
-	tmpl = template.Must(template.New("backend").Parse(backendTmpl))
-	f, err = os.OpenFile(confPath+"/"+service.Name+".backend", os.O_CREATE|os.O_RDWR, 0777)
-	if err != nil {
-		*result = 0
-		return err
-	}
-	err = tmpl.Execute(f, data)
-	if err != nil {
-		*result = 0
-		return err
+		// Generate frontend entry
+		tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
+		f, err := os.OpenFile(confPath+"/"+service.Name+".frontend", os.O_CREATE|os.O_RDWR, 0777)
+		if err != nil {
+			*result = 0
+			return err
+		}
+		// fill in the template
+		err = tmpl.Execute(f, data)
+		if err != nil {
+			*result = 0
+			return err
+		}
+
+		// Generate backend entry
+		tmpl = template.Must(template.New("backend").Parse(backendTmpl))
+		f, err = os.OpenFile(confPath+"/"+service.Name+".backend", os.O_CREATE|os.O_RDWR, 0777)
+		if err != nil {
+			*result = 0
+			return err
+		}
+		err = tmpl.Execute(f, data)
+		if err != nil {
+			*result = 0
+			return err
+		}
 	}
 
 	//join all the configs
@@ -98,10 +106,12 @@ func (h *Haproxy) Add(r *http.Request, service *Service, result *Result) error {
 }
 
 // Remove a frontend and backend
-func (h *Haproxy) Remove(r *http.Request, service *Service, result *Result) error {
-	log.Printf("Remove service %s.%s:%s", service.Name, service.Domain, service.Port)
-	sh.Command("rm", "-f", confPath+"/"+service.Name+".backend").Run()
-	sh.Command("rm", "-f", confPath+"/"+service.Name+".frontend").Run()
+func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) error {
+	for _, service := range services.Services {
+		log.Printf("Remove service %s.%s:%s", service.Name, service.Domain, service.Port)
+		sh.Command("rm", "-f", confPath+"/"+service.Name+".backend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.Name+".frontend").Run()
+	}
 
 	if err := h.generateCfg(); err != nil {
 		*result = 0

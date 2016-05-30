@@ -55,10 +55,14 @@ docker run --net=my-net --name haproxy -p 80:80 -d -v \
 docker-machine ssh mhs-demo2
 mkdir -p test && echo "I am myapp" >> test/test && exit
 # exit from mhs-demo2 machine
-
+# sample service 1
 docker run --net=my-net --net-alias=myapp.docker.com --name simplehttpserver -d -v \
   /home/docker/test:/var/www -p 8080 -e constraint:node==mhs-demo2 \
   trinitronx/python-simplehttpserver
+# sample service 2
+docker run --net=my-net --net-alias=myapp2.docker.com --name simplehttpserver -d -v \
+    /home/docker/test:/var/www -p 8181 -e constraint:node==mhs-demo2 \
+    trinitronx/python-simplehttpserver
 
 # get machine IP : docker-machine ip mhs-demo1
 # add to /etc/hosts
