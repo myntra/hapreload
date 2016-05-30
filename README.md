@@ -18,8 +18,8 @@ backend {{.Backend}}
 
 ```bash
 url = 'http://localhost:34015/haproxy'
-addArgs = {'Name':'myapp','Port':'7777','Domain':'.docker.com'}
-removeArgs = {'Name':'myapp'}
+addArgs = {'Services':[{'Name':'myapp','Port':'8080','Domain':'.docker.com'},{'Name':'myapp2','Port':'8181','Domain':'.docker.com'}]}
+removeArgs = {'Services':[{'Name':'myapp'},{'Name':'myapp2'}]}
 args = {}
 print rpc_call(url, "Haproxy.Add", addArgs)
 print rpc_call(url, "Haproxy.Remove", removeArgs)
