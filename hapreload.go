@@ -17,16 +17,16 @@ import (
 )
 
 const frontendTmpl = `
-acl is{{.Acl}} hdr_beg(host) {{.Hostname}}
-use_backend {{.Backend}} if is{{.Acl}}
+acl is{{.ACL}} hdr_beg(host) {{.Hostname}}
+use_backend {{.Backend}} if is{{.ACL}}
 `
 const backendTmpl = `
 backend {{.Backend}}
   server {{.Backend}} {{.Hostname}}:{{.Port}} check inter 10000
 `
 
-var confPath = "/haproxy/conf"
-var haproxyPath = "/haproxy"
+var confPath = "/usr/local/etc/haproxy/conf"
+var haproxyPath = "/usr/local/etc/haproxy"
 
 // Service to be added
 type Service struct {
@@ -55,7 +55,7 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 	for _, service := range services.Services {
 		log.Printf("Add service %s%s:%s", service.Name, service.Domain, service.Port)
 		data := struct {
-			Acl      string
+			ACL      string
 			Hostname string
 			Backend  string
 			Port     string
@@ -125,12 +125,12 @@ func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) er
 
 func (h *Haproxy) generateCfg() error {
 	// if conf doesn't exist , create from default
-	if _, err := os.Stat(confPath); os.IsNotExist(err) {
-		_, err := sh.Command("cp", "-rf", "/default_conf", confPath).Output()
-		if err != nil {
-			log.Println("error:", err.Error())
-		}
-	}
+	// if _, err := os.Stat(confPath); os.IsNotExist(err) {
+	// 	_, err := sh.Command("cp", "-rf", "/usr/local/etc/haproxy/conf", confPath).Output()
+	// 	if err != nil {
+	// 		log.Println("error:", err.Error())
+	// 	}
+	// }
 
 	// check if haproxy.cfg already exists and take a backup
 	if _, err := os.Stat(haproxyPath + "/haproxy.cfg"); !os.IsNotExist(err) {
@@ -173,23 +173,27 @@ func (h *Haproxy) generateCfg() error {
 	// restart haproxy container
 	session := sh.NewSession()
 	//reload haproxy
-	haproxyName := os.Getenv("HAPROXY_CONTAINER_NAME")
-	out, err := session.Command("docker", "inspect", "-f", "{{.State.Running}}", haproxyName).Output()
-	if err != nil {
-		log.Println("error:", err.Error())
-	}
-	log.Println("Haproxy isRunning", string(out))
-	if strings.Contains(string(out), "false") {
-		log.Printf("Can't reload. %v is not running", haproxyName)
-		return nil
-	}
+	// haproxyName := os.Getenv("HAPROXY_CONTAINER_NAME")
+	// out, err := session.Command("docker", "inspect", "-f", "{{.State.Running}}", haproxyName).Output()
+	// if err != nil {
+	// 	log.Println("error:", err.Error())
+	// }
+	// log.Println("Haproxy isRunning", string(out))
+	// if strings.Contains(string(out), "false") {
+	// 	log.Printf("Can't reload. %v is not running", haproxyName)
+	// 	return nil
+	// }
 
-	log.Println("Reloading haproxy container....", haproxyName)
-	out, err = session.Command("docker", "kill", "-s", "HUP", haproxyName).Output()
+	// log.Println("Reloading haproxy container....", haproxyName)
+	// out, err = session.Command("docker", "kill", "-s", "HUP", haproxyName).Output()
+	// if err != nil {
+	// 	log.Println("error:", err.Error())
+	// }
+	// log.Println("isReloaded: ", string(out))
+	err := session.Command("/usr/bin/reload.sh").Run()
 	if err != nil {
-		log.Println("error:", err.Error())
+		return err
 	}
-	log.Println("isReloaded: ", string(out))
 	return nil
 
 }
@@ -208,10 +212,10 @@ func (h *Haproxy) Generate(r *http.Request, service *Service, result *Result) er
 
 func main() {
 
-	if os.Getenv("HAPROXY_CONTAINER_NAME") == "" {
-		log.Println("Please set env HAPROXY_CONTAINER_NAME")
-		return
-	}
+	// if os.Getenv("HAPROXY_CONTAINER_NAME") == "" {
+	// 	log.Println("Please set env HAPROXY_CONTAINER_NAME")
+	// 	return
+	// }
 
 	//if running without docker
 	if os.Getenv("CONF_PATH") != "" {

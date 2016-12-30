@@ -15,3 +15,4 @@ defaults
         retries     3
         stats enable
         stats realm   Haproxy
+        #log-format  %ci:%cp\ [%t]\ %ft\ %b/%s\ %Tw/%Tc/%Tt\ %B\ %ts\ \%ac/%fc/%bc/%sc/%rc\ %sq/%bq\ %hr\ %r
