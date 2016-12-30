@@ -53,6 +53,9 @@ type Result int
 func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error {
 
 	for _, service := range services.Services {
+		sh.Command("rm", "-f", confPath+"/"+service.Name+".backend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.Name+".frontend").Run()
+
 		log.Printf("Add service %s%s:%s", service.Name, service.Domain, service.Port)
 		data := struct {
 			ACL      string
@@ -65,10 +68,6 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			service.Name,
 			service.Port,
 		}
-
-		log.Printf("Remove service %s.%s:%s", service.Name, service.Domain, service.Port)
-		sh.Command("rm", "-f", confPath+"/"+service.Name+".backend").Run()
-		sh.Command("rm", "-f", confPath+"/"+service.Name+".frontend").Run()
 		
 		// Generate frontend entry
 		tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
