@@ -66,6 +66,10 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			service.Port,
 		}
 
+		log.Printf("Remove service %s.%s:%s", service.Name, service.Domain, service.Port)
+		sh.Command("rm", "-f", confPath+"/"+service.Name+".backend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.Name+".frontend").Run()
+		
 		// Generate frontend entry
 		tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
 		f, err := os.OpenFile(confPath+"/"+service.Name+".frontend", os.O_CREATE|os.O_RDWR, 0777)
