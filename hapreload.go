@@ -36,6 +36,8 @@ type Service struct {
 	Port string
 	// .example.com
 	Domain string
+	// storefront-services-1
+	Hostname string
 }
 
 // Services ...
@@ -64,7 +66,7 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			Port     string
 		}{
 			strings.Title(service.Name),
-			service.Name + service.Domain,
+			service.Hostname + ".myntra.com",
 			service.Name,
 			service.Port,
 		}
