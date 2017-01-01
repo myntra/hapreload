@@ -17,7 +17,7 @@ import (
 )
 
 const frontendTmpl = `
-acl is{{.ACL}} hdr_beg(host) {{.Hostname}}
+acl is{{.ACL}} hdr_beg(host) {{.Backend}}
 use_backend {{.Backend}} if is{{.ACL}}
 `
 const backendTmpl = `
@@ -66,7 +66,7 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			Port     string
 		}{
 			strings.Title(service.Name),
-			service.Hostname + ".myntra.com",
+			service.Hostname + service.Domain,
 			service.Name,
 			service.Port,
 		}
