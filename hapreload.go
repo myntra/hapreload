@@ -109,6 +109,11 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		return err
 	}
 
+	if err := h.ReloadHaproxy(); err != nil {
+		*result = 0
+		return err
+	}
+
 	*result = 1
 	return nil
 
@@ -123,6 +128,11 @@ func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) er
 	}
 
 	if err := h.generateCfg(); err != nil {
+		*result = 0
+		return err
+	}
+
+	if err := h.ReloadHaproxy(); err != nil {
 		*result = 0
 		return err
 	}
@@ -168,16 +178,34 @@ func (h *Haproxy) generateCfg() error {
 	}
 
 	//write the file
-	ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
+	err := ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
+	if err!=nil{
+		return err
+	}
 
+	return nil
+
+}
+
+// StartHaproxy ...
+func (h *Haproxy) StartHaproxy() error {
 	// restart haproxy container
+	session := sh.NewSession()
+	err := session.Command("haproxy", "-p", "/var/run/haproxy.pid", "-f", "/usr/local/etc/haproxy/haproxy.cfg").Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// ReloadHaproxy ...
+func (h *Haproxy) ReloadHaproxy() error {
 	session := sh.NewSession()
 	err := session.Command("/usr/bin/reload.sh").Run()
 	if err != nil {
 		return err
 	}
 	return nil
-
 }
 
 // Generate regenerates haproxy config from existing configs
@@ -209,6 +237,7 @@ func main() {
 	// generate default haproxy.cfg
 	log.Println("Generating default haproxy.cfg")
 	haproxy.generateCfg()
+	haproxy.StartHaproxy()
 	s.RegisterService(haproxy, "")
 	r := mux.NewRouter()
 	r.Handle("/haproxy", s)
