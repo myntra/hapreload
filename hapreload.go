@@ -14,12 +14,18 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/rpc"
 	"github.com/gorilla/rpc/json"
+	"strconv"
 )
 
-const frontendTmpl = `
-acl is{{.ACL}} hdr_beg(host) {{.HaproxyURL}}
-use_backend {{.Backend}} if is{{.ACL}}
+const frontendACL = `acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
+
+const frontendUse = `use_backend {{.Backend}} if is{{.ACL}}
 `
+
+// const frontendTmpl = `
+// acl is{{.ACL}} hdr_beg(host) {{.HaproxyURL}}
+// use_backend {{.Backend}} if is{{.ACL}}
+// `
 const backendTmpl = `
 backend {{.Backend}}
   server {{.Backend}} {{.Hostmachine}}:{{.Port}} check inter 10000
@@ -33,7 +39,7 @@ type Service struct {
 	// ACL to be used
 	ACL			string
 	// URL by which service will be called
-	HaproxyURL	string
+	HaproxyURLs	[]string
 	// Backend name
 	Backend		string
 	// storefront-services-1.myntra.com
@@ -60,20 +66,33 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
 
-		log.Printf("Add service %s:%s", service.HaproxyURL, service.Port)
+		log.Printf("Add service %s:%s", service.HaproxyURLs, service.Port)
 		data := struct {
 			ACL			string
-			HaproxyURL	string
+			HaproxyURLs	[]string
 			Backend		string
 			Hostmachine	string
 			Port		string
 		}{
 			strings.Title(service.ACL),
-			service.HaproxyURL,
+			service.HaproxyURLs,
 			service.Backend,
 			service.Hostmachine,
 			service.Port,
 		}
+
+		frontendACLs := `
+  `
+
+		for x := range service.HaproxyURLs {
+			frontendACLs += strings.Replace(frontendACL, "#", strconv.Itoa(x), -1)
+			frontendACLs += `
+  `
+		}
+
+		frontendTmpl := frontendACLs+frontendUse
+
+		log.Println(frontendTmpl)
 		
 		// Generate frontend entry
 		tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
@@ -122,7 +141,7 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 // Remove a frontend and backend
 func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) error {
 	for _, service := range services.Services {
-		log.Printf("Remove service %s:%s", service.HaproxyURL, service.Port)
+		log.Printf("Remove service %s:%s", service.HaproxyURLs, service.Port)
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
 	}
