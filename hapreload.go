@@ -90,10 +90,14 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		frontendACLs := `
   `
 
+  		frontendType := ".frontend"
+
 		for haproxyURLId, haproxyURL := range service.HaproxyURLs {
 			if(haproxyURL == "default_backend") {
 				defaultBackend = data
 				isDefaultBackedDefined = true
+			} else if(strings.EqualFold(haproxyURL, "top") || strings.EqualFold(haproxyURL, "bottom")) {
+				frontendType += haproxyURL
 			} else if(string(haproxyURL[0]) == "/") {
 				frontendACLs += strings.Replace(frontendPathACL, "#", strconv.Itoa(haproxyURLId), -1)
 			} else {
@@ -109,7 +113,7 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		
 		// Generate frontend entry
 		tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
-		f, err := os.OpenFile(confPath+"/"+service.ACL+".frontend", os.O_CREATE|os.O_RDWR, 0777)
+		f, err := os.OpenFile(confPath+"/"+service.ACL+frontendType, os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
 			*result = 0
 			return err
@@ -219,7 +223,7 @@ func (h *Haproxy) generateCfg() error {
 	}
 
 	//append the configs in the following order
-	parts := []string{".globalcfg", ".defaultcfg", ".frontendcfg", ".frontend", ".default_backend", ".backend"}
+	parts := []string{".globalcfg", ".defaultcfg", ".frontendcfg", ".frontendtop", ".frontend", ".frontendbottom", ".default_backend", ".backend"}
 	for i := range parts {
 		partFunc(parts[i])
 	}
