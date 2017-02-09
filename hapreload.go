@@ -100,11 +100,13 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 				frontendType += haproxyURL
 			} else if(string(haproxyURL[0]) == "/") {
 				frontendACLs += strings.Replace(frontendPathACL, "#", strconv.Itoa(haproxyURLId), -1)
+				frontendACLs += `
+`
 			} else {
+				frontendACLs += `
+`
 				frontendACLs += strings.Replace(frontendHeaderACL, "#", strconv.Itoa(haproxyURLId), -1)
 			}
-			frontendACLs += `
-  `
 		}
 
 		frontendTmpl := frontendACLs+frontendUse
