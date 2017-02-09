@@ -17,7 +17,8 @@ import (
 	"strconv"
 )
 
-const frontendACL = `acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
+const frontendHeaderACL = `acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
+const frontendPathACL	= `acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}`
 
 const frontendUse = `use_backend {{.Backend}} if is{{.ACL}}
 `
@@ -29,6 +30,10 @@ const frontendUse = `use_backend {{.Backend}} if is{{.ACL}}
 const backendTmpl = `
 backend {{.Backend}}
   server {{.Backend}} {{.Hostmachine}}:{{.Port}} check inter 10000
+`
+
+const defaultBackendTmpl = `
+  default_backend {{.Backend}}
 `
 
 var confPath = "/usr/local/etc/haproxy/conf"
@@ -61,7 +66,8 @@ type Result int
 
 // Add a frontend and backend
 func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error {
-
+	var defaultBackend interface{}
+	isDefaultBackedDefined := false
 	for _, service := range services.Services {
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
@@ -84,8 +90,15 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		frontendACLs := `
   `
 
-		for x := range service.HaproxyURLs {
-			frontendACLs += strings.Replace(frontendACL, "#", strconv.Itoa(x), -1)
+		for haproxyURLId, haproxyURL := range service.HaproxyURLs {
+			if(haproxyURL == "default_backend") {
+				defaultBackend = data
+				isDefaultBackedDefined = true
+			} else if(string(haproxyURL[0]) == "/") {
+				frontendACLs += strings.Replace(frontendPathACL, "#", strconv.Itoa(haproxyURLId), -1)
+			} else {
+				frontendACLs += strings.Replace(frontendHeaderACL, "#", strconv.Itoa(haproxyURLId), -1)
+			}
 			frontendACLs += `
   `
 		}
@@ -116,6 +129,21 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			return err
 		}
 		err = tmpl.Execute(f, data)
+		if err != nil {
+			*result = 0
+			return err
+		}
+	}
+
+	// Generate default_backend if needed
+	if(isDefaultBackedDefined) {
+		tmpl := template.Must(template.New("default_backend").Parse(defaultBackendTmpl))
+		f, err := os.OpenFile(confPath+"/"+".default_backend", os.O_CREATE|os.O_RDWR, 0777)
+		if err != nil {
+			*result = 0
+			return err
+		}
+		err = tmpl.Execute(f, defaultBackend)
 		if err != nil {
 			*result = 0
 			return err
@@ -191,7 +219,7 @@ func (h *Haproxy) generateCfg() error {
 	}
 
 	//append the configs in the following order
-	parts := []string{".globalcfg", ".defaultcfg", ".frontendcfg", ".frontend", ".backend"}
+	parts := []string{".globalcfg", ".defaultcfg", ".frontendcfg", ".frontend", ".default_backend", ".backend"}
 	for i := range parts {
 		partFunc(parts[i])
 	}
