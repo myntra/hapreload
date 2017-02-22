@@ -103,9 +103,9 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 				frontendACLs += `
 `
 			} else {
+				frontendACLs += strings.Replace(frontendHeaderACL, "#", strconv.Itoa(haproxyURLId), -1)
 				frontendACLs += `
 `
-				frontendACLs += strings.Replace(frontendHeaderACL, "#", strconv.Itoa(haproxyURLId), -1)
 			}
 		}
 
