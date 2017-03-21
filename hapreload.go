@@ -71,7 +71,9 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 	isDefaultBackedDefined := false
 	for _, service := range services.Services {
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
-		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend*").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontendtop").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontendbottom").Run()
 
 		log.Printf("Add service %s:%s", service.HaproxyURLs, service.Port)
 		data := struct {
