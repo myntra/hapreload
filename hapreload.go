@@ -10,15 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
 	"github.com/codeskyblue/go-sh"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/rpc"
 	"github.com/gorilla/rpc/json"
-	"strconv"
 )
 
 const frontendHeaderACL = `acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
-const frontendPathACL	= `acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}`
+const frontendPathACL = `acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}`
 
 const frontendUse = `use_backend {{.Backend}} if is{{.ACL}}
 `
@@ -42,15 +43,15 @@ var haproxyPath = "/usr/local/etc/haproxy"
 // Service to be added
 type Service struct {
 	// ACL to be used
-	ACL			string
+	ACL string
 	// URL by which service will be called
-	HaproxyURLs	[]string
+	HaproxyURLs []string
 	// Backend name
-	Backend		string
+	Backend string
 	// storefront-services-1.myntra.com
-	Hostmachine	string
+	Hostmachine string
 	// Port on Hostmachine where service runs
-	Port		string
+	Port string
 }
 
 // Services ...
@@ -70,15 +71,15 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 	isDefaultBackedDefined := false
 	for _, service := range services.Services {
 		sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
-		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend*").Run()
 
 		log.Printf("Add service %s:%s", service.HaproxyURLs, service.Port)
 		data := struct {
-			ACL			string
-			HaproxyURLs	[]string
-			Backend		string
-			Hostmachine	string
-			Port		string
+			ACL         string
+			HaproxyURLs []string
+			Backend     string
+			Hostmachine string
+			Port        string
 		}{
 			strings.Title(service.ACL),
 			service.HaproxyURLs,
@@ -90,15 +91,15 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		frontendACLs := `
   `
 
-  		frontendType := ".frontend"
+		frontendType := ".frontend"
 
 		for haproxyURLId, haproxyURL := range service.HaproxyURLs {
-			if(haproxyURL == "default_backend") {
+			if haproxyURL == "default_backend" {
 				defaultBackend = data
 				isDefaultBackedDefined = true
-			} else if(strings.EqualFold(haproxyURL, "top") || strings.EqualFold(haproxyURL, "bottom")) {
+			} else if strings.EqualFold(haproxyURL, "top") || strings.EqualFold(haproxyURL, "bottom") {
 				frontendType += haproxyURL
-			} else if(string(haproxyURL[0]) == "/") {
+			} else if string(haproxyURL[0]) == "/" {
 				frontendACLs += `  `
 				frontendACLs += strings.Replace(frontendPathACL, "#", strconv.Itoa(haproxyURLId), -1)
 				frontendACLs += `
@@ -111,10 +112,10 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			}
 		}
 
-		frontendTmpl := frontendACLs+frontendUse
+		frontendTmpl := frontendACLs + frontendUse
 
 		log.Println(frontendTmpl)
-		
+
 		// Generate frontend entry
 		tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
 		f, err := os.OpenFile(confPath+"/"+service.ACL+frontendType, os.O_CREATE|os.O_RDWR, 0777)
@@ -144,7 +145,7 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 	}
 
 	// Generate default_backend if needed
-	if(isDefaultBackedDefined) {
+	if isDefaultBackedDefined {
 		tmpl := template.Must(template.New("default_backend").Parse(defaultBackendTmpl))
 		f, err := os.OpenFile(confPath+"/"+".default_backend", os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
@@ -234,7 +235,7 @@ func (h *Haproxy) generateCfg() error {
 
 	//write the file
 	err := ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
-	if err!=nil{
+	if err != nil {
 		return err
 	}
 
