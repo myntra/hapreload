@@ -18,11 +18,13 @@ import (
 	"github.com/gorilla/rpc/json"
 )
 
-const frontendHeaderACL = `acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
-const frontendPathACL = `acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}`
+const frontendHeaderACL = `
+  acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
+const frontendPathACL = `
+  acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}`
 
-const frontendUse = `use_backend {{.Backend}} if is{{.ACL}}
-`
+const frontendUse = `
+  use_backend {{.Backend}} if is{{.ACL}}`
 
 // const frontendTmpl = `
 // acl is{{.ACL}} hdr_beg(host) {{.HaproxyURL}}
@@ -30,12 +32,10 @@ const frontendUse = `use_backend {{.Backend}} if is{{.ACL}}
 // `
 const backendTmpl = `
 backend {{.Backend}}
-  server {{.Backend}} {{.Hostmachine}}:{{.Port}} check inter 10000
-`
+  server {{.Backend}} {{.Hostmachine}}:{{.Port}} check inter 10000`
 
 const defaultBackendTmpl = `
-  default_backend {{.Backend}}
-`
+  default_backend {{.Backend}}`
 
 var confPath = "/usr/local/etc/haproxy/conf"
 var haproxyPath = "/usr/local/etc/haproxy"
