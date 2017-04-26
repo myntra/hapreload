@@ -18,24 +18,26 @@ import (
 	"github.com/gorilla/rpc/json"
 )
 
-const frontendHeaderACL = `
-  acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
-const frontendPathACL = `
-  acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}`
+const frontendHeaderACL = `  acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}
+`
+const frontendPathACL = `  acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}
+`
 
-const frontendUse = `
-  use_backend {{.Backend}} if is{{.ACL}}`
+const frontendUse = `  use_backend {{.Backend}} if is{{.ACL}}
+`
 
 // const frontendTmpl = `
 // acl is{{.ACL}} hdr_beg(host) {{.HaproxyURL}}
 // use_backend {{.Backend}} if is{{.ACL}}
 // `
-const backendTmpl = `
+const backendTmpl = `##
 backend {{.Backend}}
-  server {{.Backend}} {{.Hostmachine}}:{{.Port}} check inter 10000`
+  server {{.Backend}} {{.Hostmachine}}:{{.Port}} check inter 10000
+`
 
-const defaultBackendTmpl = `
-  default_backend {{.Backend}}`
+const defaultBackendTmpl = `##
+  default_backend {{.Backend}}
+`
 
 var confPath = "/usr/local/etc/haproxy/conf"
 var haproxyPath = "/usr/local/etc/haproxy"
@@ -90,8 +92,8 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			service.Port,
 		}
 
-		frontendACLs := `
-  `
+		frontendACLs := `##
+`
 
 		frontendType := ".frontend"
 
@@ -102,15 +104,9 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 			} else if strings.EqualFold(haproxyURL, "top") || strings.EqualFold(haproxyURL, "bottom") {
 				frontendType += haproxyURL
 			} else if string(haproxyURL[0]) == "/" {
-				frontendACLs += `  `
 				frontendACLs += strings.Replace(frontendPathACL, "#", strconv.Itoa(haproxyURLId), -1)
-				frontendACLs += `
-`
 			} else {
-				frontendACLs += `  `
 				frontendACLs += strings.Replace(frontendHeaderACL, "#", strconv.Itoa(haproxyURLId), -1)
-				frontendACLs += `
-`
 			}
 		}
 
