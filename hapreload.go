@@ -10,32 +10,48 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
 	"github.com/codeskyblue/go-sh"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/rpc"
 	"github.com/gorilla/rpc/json"
 )
 
-const frontendTmpl = `
-acl is{{.Acl}} hdr_beg(host) {{.Hostname}}
-use_backend {{.Backend}} if is{{.Acl}}
-`
+const frontendHeaderACL = `
+  acl is{{.ACL}} hdr_beg(host) {{index .HaproxyURLs #}}`
+const frontendPathACL = `
+  acl is{{.ACL}} path_beg -i {{index .HaproxyURLs #}}`
+
+const frontendUse = `
+  use_backend {{.Backend}} if is{{.ACL}}`
+
+// const frontendTmpl = `
+// acl is{{.ACL}} hdr_beg(host) {{.HaproxyURL}}
+// use_backend {{.Backend}} if is{{.ACL}}
+// `
 const backendTmpl = `
 backend {{.Backend}}
-  server {{.Backend}} {{.Hostname}}:{{.Port}} check inter 10000
-`
+  server {{.Backend}} {{.Hostmachine}}:{{.Port}} check inter 10000`
 
-var confPath = "/haproxy/conf"
-var haproxyPath = "/haproxy"
+const defaultBackendTmpl = `
+  default_backend {{.Backend}}`
+
+var confPath = "/usr/local/etc/haproxy/conf"
+var haproxyPath = "/usr/local/etc/haproxy"
 
 // Service to be added
 type Service struct {
-	// service name
-	Name string
-	// service port
+	// ACL to be used
+	ACL string
+	// URL by which service will be called
+	HaproxyURLs []string
+	// Backend name
+	Backend string
+	// storefront-services-1.myntra.com
+	Hostmachine string
+	// Port on Hostmachine where service runs
 	Port string
-	// .example.com
-	Domain string
 }
 
 // Services ...
@@ -51,24 +67,60 @@ type Result int
 
 // Add a frontend and backend
 func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error {
-
+	var defaultBackend interface{}
+	isDefaultBackedDefined := false
 	for _, service := range services.Services {
-		log.Printf("Add service %s%s:%s", service.Name, service.Domain, service.Port)
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontendtop").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontendbottom").Run()
+
+		log.Printf("Add service %s:%s", service.HaproxyURLs, service.Port)
 		data := struct {
-			Acl      string
-			Hostname string
-			Backend  string
-			Port     string
+			ACL         string
+			HaproxyURLs []string
+			Backend     string
+			Hostmachine string
+			Port        string
 		}{
-			strings.Title(service.Name),
-			service.Name + service.Domain,
-			service.Name,
+			strings.Title(service.ACL),
+			service.HaproxyURLs,
+			service.Backend,
+			service.Hostmachine,
 			service.Port,
 		}
 
+		frontendACLs := `
+  `
+
+		frontendType := ".frontend"
+
+		for haproxyURLId, haproxyURL := range service.HaproxyURLs {
+			if haproxyURL == "default_backend" {
+				defaultBackend = data
+				isDefaultBackedDefined = true
+			} else if strings.EqualFold(haproxyURL, "top") || strings.EqualFold(haproxyURL, "bottom") {
+				frontendType += haproxyURL
+			} else if string(haproxyURL[0]) == "/" {
+				frontendACLs += `  `
+				frontendACLs += strings.Replace(frontendPathACL, "#", strconv.Itoa(haproxyURLId), -1)
+				frontendACLs += `
+`
+			} else {
+				frontendACLs += `  `
+				frontendACLs += strings.Replace(frontendHeaderACL, "#", strconv.Itoa(haproxyURLId), -1)
+				frontendACLs += `
+`
+			}
+		}
+
+		frontendTmpl := frontendACLs + frontendUse
+
+		log.Println(frontendTmpl)
+
 		// Generate frontend entry
 		tmpl := template.Must(template.New("frontend").Parse(frontendTmpl))
-		f, err := os.OpenFile(confPath+"/"+service.Name+".frontend", os.O_CREATE|os.O_RDWR, 0777)
+		f, err := os.OpenFile(confPath+"/"+service.ACL+frontendType, os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
 			*result = 0
 			return err
@@ -82,12 +134,27 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 
 		// Generate backend entry
 		tmpl = template.Must(template.New("backend").Parse(backendTmpl))
-		f, err = os.OpenFile(confPath+"/"+service.Name+".backend", os.O_CREATE|os.O_RDWR, 0777)
+		f, err = os.OpenFile(confPath+"/"+service.ACL+".backend", os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
 			*result = 0
 			return err
 		}
 		err = tmpl.Execute(f, data)
+		if err != nil {
+			*result = 0
+			return err
+		}
+	}
+
+	// Generate default_backend if needed
+	if isDefaultBackedDefined {
+		tmpl := template.Must(template.New("default_backend").Parse(defaultBackendTmpl))
+		f, err := os.OpenFile(confPath+"/"+".default_backend", os.O_CREATE|os.O_RDWR, 0777)
+		if err != nil {
+			*result = 0
+			return err
+		}
+		err = tmpl.Execute(f, defaultBackend)
 		if err != nil {
 			*result = 0
 			return err
@@ -100,6 +167,11 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		return err
 	}
 
+	if err := h.ReloadHaproxy(); err != nil {
+		*result = 0
+		return err
+	}
+
 	*result = 1
 	return nil
 
@@ -108,12 +180,17 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 // Remove a frontend and backend
 func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) error {
 	for _, service := range services.Services {
-		log.Printf("Remove service %s.%s:%s", service.Name, service.Domain, service.Port)
-		sh.Command("rm", "-f", confPath+"/"+service.Name+".backend").Run()
-		sh.Command("rm", "-f", confPath+"/"+service.Name+".frontend").Run()
+		log.Printf("Remove service %s:%s", service.HaproxyURLs, service.Port)
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
+		sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
 	}
 
 	if err := h.generateCfg(); err != nil {
+		*result = 0
+		return err
+	}
+
+	if err := h.ReloadHaproxy(); err != nil {
 		*result = 0
 		return err
 	}
@@ -124,15 +201,6 @@ func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) er
 }
 
 func (h *Haproxy) generateCfg() error {
-	// if conf doesn't exist , create from default
-	if _, err := os.Stat(confPath); os.IsNotExist(err) {
-		_, err := sh.Command("cp", "-rf", "/default_conf", confPath).Output()
-		if err != nil {
-			log.Println("error:", err.Error())
-		}
-	}
-
-	// check if haproxy.cfg already exists and take a backup
 	if _, err := os.Stat(haproxyPath + "/haproxy.cfg"); !os.IsNotExist(err) {
 		currentTime := string(time.Now().Format("20060102150405"))
 		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+currentTime)
@@ -162,36 +230,40 @@ func (h *Haproxy) generateCfg() error {
 	}
 
 	//append the configs in the following order
-	parts := []string{".globalcfg", ".defaultcfg", ".frontendcfg", ".frontend", ".backend"}
+	parts := []string{".globalcfg", ".defaultcfg", ".frontendcfg", ".frontendtop", ".frontend", ".frontendbottom", ".default_backend", ".backend"}
 	for i := range parts {
 		partFunc(parts[i])
 	}
 
 	//write the file
-	ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
-
-	// restart haproxy container
-	session := sh.NewSession()
-	//reload haproxy
-	haproxyName := os.Getenv("HAPROXY_CONTAINER_NAME")
-	out, err := session.Command("docker", "inspect", "-f", "{{.State.Running}}", haproxyName).Output()
+	err := ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
 	if err != nil {
-		log.Println("error:", err.Error())
-	}
-	log.Println("Haproxy isRunning", string(out))
-	if strings.Contains(string(out), "false") {
-		log.Printf("Can't reload. %v is not running", haproxyName)
-		return nil
+		return err
 	}
 
-	log.Println("Reloading haproxy container....", haproxyName)
-	out, err = session.Command("docker", "kill", "-s", "HUP", haproxyName).Output()
-	if err != nil {
-		log.Println("error:", err.Error())
-	}
-	log.Println("isReloaded: ", string(out))
 	return nil
 
+}
+
+// StartHaproxy ...
+func (h *Haproxy) StartHaproxy() error {
+	// restart haproxy container
+	session := sh.NewSession()
+	err := session.Command("haproxy", "-p", "/var/run/haproxy.pid", "-f", "/usr/local/etc/haproxy/haproxy.cfg").Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// ReloadHaproxy ...
+func (h *Haproxy) ReloadHaproxy() error {
+	session := sh.NewSession()
+	err := session.Command("/usr/bin/reload.sh").Run()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Generate regenerates haproxy config from existing configs
@@ -208,11 +280,6 @@ func (h *Haproxy) Generate(r *http.Request, service *Service, result *Result) er
 
 func main() {
 
-	if os.Getenv("HAPROXY_CONTAINER_NAME") == "" {
-		log.Println("Please set env HAPROXY_CONTAINER_NAME")
-		return
-	}
-
 	//if running without docker
 	if os.Getenv("CONF_PATH") != "" {
 		confPath = os.Getenv("CONF_PATH")
@@ -228,6 +295,7 @@ func main() {
 	// generate default haproxy.cfg
 	log.Println("Generating default haproxy.cfg")
 	haproxy.generateCfg()
+	haproxy.StartHaproxy()
 	s.RegisterService(haproxy, "")
 	r := mux.NewRouter()
 	r.Handle("/haproxy", s)

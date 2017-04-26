@@ -1,10 +1,18 @@
-FROM looztra/alpine-docker-client
-EXPOSE 34015
-RUN mkdir /haproxy
-ADD conf /default_conf
-# GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .
+FROM alpine:latest
+EXPOSE 34015 80 443
+
+RUN echo "http://dl-cdn.alpinelinux.org/alpine/v3.4/main/" > /etc/apk/repositories \
+    && apk add --update haproxy vim curl bash tar rsyslog
+
+RUN sed -i -e 's|#$ModLoad imudp|$ModLoad imudp|' /etc/rsyslog.conf
+RUN sed -i -e 's|#$UDPServerRun 514|$UDPServerRun 514|' /etc/rsyslog.conf
+RUN mkdir -p /etc/rsyslog.d
+RUN echo "if (\$programname == 'haproxy') then -/var/log/haproxy.log" > /etc/rsyslog.d/haproxy.conf
+
+# RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .
 ADD hapreload /usr/bin/hapreload
-RUN chmod +x /usr/bin/hapreload
-ENV HAPROXY_CONTAINER_NAME haproxy
-ENTRYPOINT ["/usr/bin/hapreload"]
-CMD ["/usr/bin/hapreload"]
+ADD start.sh /usr/bin/start.sh
+ADD reload.sh /usr/bin/reload.sh
+RUN chmod +x /usr/bin/hapreload /usr/bin/start.sh /usr/bin/reload.sh
+
+CMD ["/usr/bin/start.sh"]
