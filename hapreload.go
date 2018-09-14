@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -54,11 +55,17 @@ type Service struct {
 	Hostmachine string
 	// Port on Hostmachine where service runs
 	Port string
+	//Lock Time
+	EpocTime time.Time
+	//ClusterName
+	ClusterName string
 }
 
 // Services ...
 type Services struct {
-	Services []Service
+	Services    []Service
+	ClusterName string
+	EpocTime    int64
 }
 
 // Haproxy ...
@@ -66,6 +73,9 @@ type Haproxy int
 
 // Result ...
 type Result int
+
+// Health Check
+type Health int
 
 // Add a frontend and backend
 func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error {
@@ -274,8 +284,100 @@ func (h *Haproxy) Generate(r *http.Request, service *Service, result *Result) er
 
 }
 
-func main() {
+//BringIntoLB ...
+func (h *Haproxy) BringIntoLB(r *http.Request, services *Services, result *Result) error {
+	session := sh.NewSession()
+	err := session.Command("touch", "-f", "/usr/local/etc/live").Run()
+	if err != nil {
+		*result = 0
+		return err
+	}
+	*result = 1
+	return nil
+}
 
+//BringOutOfLB ...
+func (h *Haproxy) BringOutOfLB(r *http.Request, services *Services, result *Result) error {
+	session := sh.NewSession()
+	err := session.Command("rm", "-f", "/usr/local/etc/live").Run()
+	if err != nil {
+		*result = 0
+		return fmt.Errorf("Failed to BringOutOfLB:%s", err)
+	}
+	*result = 1
+	return nil
+}
+
+//LockHAPSession ...
+func (h *Haproxy) LockHAPSession(r *http.Request, services *Services, result *Result) error {
+	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
+		b, err := ioutil.ReadFile(haproxyPath + "/lock")
+		if err != nil {
+			*result = 0
+			return fmt.Errorf("Error in Opening the Hap Lock file:%s", err)
+		}
+		*result = 0
+		return fmt.Errorf("Hap Session is Locked by :%s", string(b))
+	}
+	session := sh.NewSession()
+	err := session.Command("echo", fmt.Sprintf("%d", services.EpocTime)+"-"+services.ClusterName, ">", haproxyPath+"/lock").Run()
+	if err != nil {
+		*result = 0
+		return fmt.Errorf("Error in locking the HAP session for reload:%s", err)
+	}
+	*result = 1
+	return nil
+}
+
+//UnLockHAPSession ...
+func (h *Haproxy) UnLockHAPSession(r *http.Request, services *Services, result *Result) error {
+	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
+		b, err := ioutil.ReadFile(haproxyPath + "/lock")
+		if err != nil {
+			*result = 0
+			return fmt.Errorf("Error in Opening the Hap Lock file:%s", err)
+		}
+		if string(b) == (fmt.Sprintf("%d", services.EpocTime) + "-" + services.ClusterName) {
+			session := sh.NewSession()
+			err := session.Command("rm", "-f", haproxyPath+"/lock").Run()
+			if err != nil {
+				*result = 0
+				return fmt.Errorf("Error in removing the Lock File for Hap Reload:%s", err)
+			}
+		}
+	}
+	*result = 1
+	return nil
+}
+
+//KillHAP ...
+func (h *Haproxy) KillHAP(r *http.Request, services *Services, result *Result) error {
+	if _, err := os.Stat("/var/run/haproxy.pid"); !os.IsNotExist(err) {
+		session := sh.NewSession()
+		err = session.Command("/usr/bin/kill.sh").Run()
+		if err != nil {
+			*result = 0
+			return fmt.Errorf("Error in Killing the Old Hap Instance:%s", err)
+		}
+	}
+	*result = 1
+	return nil
+}
+
+//HealthCheck ...
+func HealthCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "HEAD" {
+		if _, err := os.Stat("/usr/local/etc/live"); !os.IsNotExist(err) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	} else {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func main() {
 	//if running without docker
 	if os.Getenv("CONF_PATH") != "" {
 		confPath = os.Getenv("CONF_PATH")
@@ -295,6 +397,7 @@ func main() {
 	s.RegisterService(haproxy, "")
 	r := mux.NewRouter()
 	r.Handle("/haproxy", s)
+	//Route Added for Hap Health Check
+	r.HandleFunc("/health", HealthCheck).Methods("HEAD")
 	http.ListenAndServe(":34015", r)
-
 }

@@ -13,6 +13,6 @@ RUN echo "if (\$programname == 'haproxy') then -/var/log/haproxy.log" > /etc/rsy
 ADD hapreload /usr/bin/hapreload
 ADD start.sh /usr/bin/start.sh
 ADD reload.sh /usr/bin/reload.sh
-RUN chmod +x /usr/bin/hapreload /usr/bin/start.sh /usr/bin/reload.sh
-
+ADD kill.sh /usr/bin/kill.sh
+RUN chmod +x /usr/bin/hapreload /usr/bin/start.sh /usr/bin/reload.sh /usr/bin/kill.sh
 CMD ["/usr/bin/start.sh"]
