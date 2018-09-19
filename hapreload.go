@@ -319,7 +319,7 @@ func (h *Haproxy) LockHAPSession(r *http.Request, services *Services, result *Re
 		*result = 0
 		return fmt.Errorf("Hap Session is Locked by :%s", string(b))
 	}
-	err = ioutil.WriteFile(haproxyPath+"/lock", []byte(fmt.Sprintf("%d", services.EpocTime)+"-"+services.ClusterName), 0755)
+	err := ioutil.WriteFile(haproxyPath+"/lock", []byte(fmt.Sprintf("%d", services.EpocTime)+"-"+services.ClusterName), 0755)
 	if err != nil {
 		*result = 0
 		return fmt.Errorf("Error in writing to file:%s", err)
