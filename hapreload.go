@@ -393,7 +393,10 @@ func main() {
 	// generate default haproxy.cfg
 	log.Println("Generating default haproxy.cfg")
 	haproxy.generateCfg()
-	haproxy.StartHaproxy()
+	err := haproxy.StartHaproxy()
+        if err != nil {
+                haproxy.BringIntoLB(nil, nil, nil)
+        }
 	s.RegisterService(haproxy, "")
 	r := mux.NewRouter()
 	r.Handle("/haproxy", s)
