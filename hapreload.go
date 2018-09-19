@@ -287,7 +287,7 @@ func (h *Haproxy) Generate(r *http.Request, service *Service, result *Result) er
 //BringIntoLB ...
 func (h *Haproxy) BringIntoLB(r *http.Request, services *Services, result *Result) error {
 	session := sh.NewSession()
-	err := session.Command("touch", "-f", "/usr/local/etc/live").Run()
+	err := session.Command("touch", "/usr/local/etc/live").Run()
 	if err != nil {
 		*result = 0
 		return err
@@ -319,11 +319,10 @@ func (h *Haproxy) LockHAPSession(r *http.Request, services *Services, result *Re
 		*result = 0
 		return fmt.Errorf("Hap Session is Locked by :%s", string(b))
 	}
-	session := sh.NewSession()
-	err := session.Command("echo", fmt.Sprintf("%d", services.EpocTime)+"-"+services.ClusterName, ">", haproxyPath+"/lock").Run()
+	err = ioutil.WriteFile(haproxyPath+"/lock", []byte(fmt.Sprintf("%d", services.EpocTime)+"-"+services.ClusterName), 0755)
 	if err != nil {
 		*result = 0
-		return fmt.Errorf("Error in locking the HAP session for reload:%s", err)
+		return fmt.Errorf("Error in writing to file:%s", err)
 	}
 	*result = 1
 	return nil
@@ -394,9 +393,13 @@ func main() {
 	log.Println("Generating default haproxy.cfg")
 	haproxy.generateCfg()
 	err := haproxy.StartHaproxy()
-        if err != nil {
-                haproxy.BringIntoLB(nil, nil, nil)
-        }
+	if err == nil {
+		session := sh.NewSession()
+		err = session.Command("touch", "/usr/local/etc/live").Run()
+		if err != nil {
+			log.Println("Failed to create the live File")
+		}
+	}
 	s.RegisterService(haproxy, "")
 	r := mux.NewRouter()
 	r.Handle("/haproxy", s)
