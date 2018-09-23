@@ -43,6 +43,8 @@ const defaultBackendTmpl = `##
 var confPath = "/usr/local/etc/haproxy/conf"
 var haproxyPath = "/usr/local/etc/haproxy"
 
+var queueSlice []string
+
 // Service to be added
 type Service struct {
 	// ACL to be used
@@ -55,8 +57,6 @@ type Service struct {
 	Hostmachine string
 	// Port on Hostmachine where service runs
 	Port string
-	//Lock Time
-	EpocTime time.Time
 	//ClusterName
 	ClusterName string
 }
@@ -310,39 +310,58 @@ func (h *Haproxy) BringOutOfLB(r *http.Request, services *Services, result *Resu
 
 //LockHAPSession ...
 func (h *Haproxy) LockHAPSession(r *http.Request, services *Services, result *Result) error {
-	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
-		b, err := ioutil.ReadFile(haproxyPath + "/lock")
+	if _, err := os.Stat(haproxyPath + "/queue"); os.IsNotExist(err) {
+		f, err := os.OpenFile(haproxyPath+"/queue", os.O_CREATE, 0755)
+		defer f.Close()
 		if err != nil {
 			*result = 0
-			return fmt.Errorf("Error in Opening the Hap Lock file:%s", err)
+			return fmt.Errorf("Error in creating the Queue File:%s", err)
 		}
-		*result = 0
-		return fmt.Errorf("Hap Session is Locked by :%s", string(b))
 	}
-	err := ioutil.WriteFile(haproxyPath+"/lock", []byte(fmt.Sprintf("%d", services.EpocTime)+"-"+services.ClusterName), 0755)
+	fileContent, err := ioutil.ReadFile(haproxyPath + "/queue")
 	if err != nil {
 		*result = 0
-		return fmt.Errorf("Error in writing to file:%s", err)
+		return fmt.Errorf("Error in reading the queue File:%s", err)
 	}
-	*result = 1
-	return nil
+	fileContentString := string(fileContent)
+	firstClusterSlice := strings.Split(fileContentString, "\n")
+	log.Println(len(firstClusterSlice))
+	if firstClusterSlice[0] == services.ClusterName {
+		*result = 1
+		return nil
+	}
+	if !strings.Contains(fileContentString, services.ClusterName) {
+		f, err := os.OpenFile(haproxyPath+"/queue", os.O_APPEND|os.O_RDWR, 0755)
+		defer f.Close()
+		if err != nil {
+			*result = 0
+			return fmt.Errorf("Error in Writing to File:%s", err)
+		}
+		_, err = f.WriteString(services.ClusterName + "\n")
+		if err != nil {
+			*result = 0
+			return fmt.Errorf("Error in Writing to File:%s", err)
+		}
+		f.Sync()
+	}
+	*result = 0
+	return fmt.Errorf("HAP Locked By:%s", firstClusterSlice[0])
 }
 
 //UnLockHAPSession ...
 func (h *Haproxy) UnLockHAPSession(r *http.Request, services *Services, result *Result) error {
-	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
-		b, err := ioutil.ReadFile(haproxyPath + "/lock")
+	fileContent, err := ioutil.ReadFile(haproxyPath + "/queue")
+	if err != nil {
+		*result = 0
+		return fmt.Errorf("Error in reading the queue File:%s", err)
+	}
+	fileContentString := string(fileContent)
+	firstClusterSlice := strings.Split(fileContentString, "\n")
+	if firstClusterSlice[0] == services.ClusterName {
+		err := ioutil.WriteFile(haproxyPath+"/queue", []byte(strings.Join(firstClusterSlice[1:len(firstClusterSlice)], "\n")), 0755)
 		if err != nil {
 			*result = 0
-			return fmt.Errorf("Error in Opening the Hap Lock file:%s", err)
-		}
-		if string(b) == (fmt.Sprintf("%d", services.EpocTime) + "-" + services.ClusterName) {
-			session := sh.NewSession()
-			err := session.Command("rm", "-f", haproxyPath+"/lock").Run()
-			if err != nil {
-				*result = 0
-				return fmt.Errorf("Error in removing the Lock File for Hap Reload:%s", err)
-			}
+			return fmt.Errorf("Error in reading the queue File:%s", err)
 		}
 	}
 	*result = 1
@@ -365,6 +384,7 @@ func (h *Haproxy) KillHAP(r *http.Request, services *Services, result *Result) e
 
 //HealthCheck ...
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
+	log.Println("Healthcheck")
 	if r.Method == "HEAD" {
 		if _, err := os.Stat("/usr/local/etc/live"); !os.IsNotExist(err) {
 			w.WriteHeader(http.StatusOK)
@@ -374,6 +394,72 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+//WriteToFile ...
+func WriteToFile(w http.ResponseWriter, r *http.Request) {
+	cluster := strings.Split(r.URL.Path, "/")[2]
+	if _, err := os.Stat(haproxyPath + "/queue"); os.IsNotExist(err) {
+		f, err := os.OpenFile(haproxyPath+"/queue", os.O_CREATE, 0755)
+		if err != nil {
+			panic(err)
+			//return false,fmt.Errorf("Error in creating the Queue File:%s", err)
+		}
+		defer f.Close()
+	}
+	fileContent, err := ioutil.ReadFile(haproxyPath + "/queue")
+	if err != nil {
+		panic(err)
+		//return false,fmt.Errorf("Error in reading the queue File:%s", err)
+	}
+	fileContentString := string(fileContent)
+	firstClusterSlice := strings.Split(fileContentString, "\n")
+	log.Printf("File Slice:%s", firstClusterSlice)
+	log.Println(len(firstClusterSlice))
+	if firstClusterSlice[0] == cluster {
+		log.Printf("Match the String:%s,%s", cluster, firstClusterSlice[0])
+		//return true, nil
+	}
+	if !strings.Contains(fileContentString, cluster) {
+		f, err := os.OpenFile(haproxyPath+"/queue", os.O_APPEND|os.O_RDWR, 0755)
+		defer f.Close()
+		if err != nil {
+			log.Printf("Error in Writing to queue File:%s", err)
+			//return false, fmt.Errorf("Error in Writing to File:%s", err)
+		}
+		_, err = f.WriteString(cluster + "\n")
+		if err != nil {
+			log.Printf("Error in Writing to queue File:%s", err)
+			//return false, fmt.Errorf("Error in Writing to File:%s", err)
+		}
+		f.Sync()
+	}
+	//return false, nil
+}
+
+//RemoveFromQueue ...
+func RemoveFromQueue(w http.ResponseWriter, r *http.Request) {
+	cluster := strings.Split(r.URL.Path, "/")[2]
+	fileContent, err := ioutil.ReadFile(haproxyPath + "/queue")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("Failed to Read Queue File:%s", err)))
+		return
+	}
+	fileContentString := string(fileContent)
+	firstClusterSlice := strings.Split(fileContentString, "\n")
+	if firstClusterSlice[0] == cluster {
+		err := ioutil.WriteFile(haproxyPath+"/queue", []byte(strings.Join(firstClusterSlice[1:len(firstClusterSlice)], "\n")), 0755)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(fmt.Sprintf("Failed to Write to Queue File:%s", err)))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fmt.Sprintf("Deleted Cluster From Queue:%s", cluster)))
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("Cluster is not in First Position:%s", cluster)))
 }
 
 func main() {
@@ -404,6 +490,8 @@ func main() {
 	r := mux.NewRouter()
 	r.Handle("/haproxy", s)
 	//Route Added for Hap Health Check
+	log.Println("New routes")
 	r.HandleFunc("/health", HealthCheck).Methods("HEAD")
+	r.HandleFunc("/Removefromqueue/{cluster}", RemoveFromQueue).Methods("POST")
 	http.ListenAndServe(":34015", r)
 }
