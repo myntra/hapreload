@@ -396,47 +396,6 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//WriteToFile ...
-func WriteToFile(w http.ResponseWriter, r *http.Request) {
-	cluster := strings.Split(r.URL.Path, "/")[2]
-	if _, err := os.Stat(haproxyPath + "/queue"); os.IsNotExist(err) {
-		f, err := os.OpenFile(haproxyPath+"/queue", os.O_CREATE, 0755)
-		if err != nil {
-			panic(err)
-			//return false,fmt.Errorf("Error in creating the Queue File:%s", err)
-		}
-		defer f.Close()
-	}
-	fileContent, err := ioutil.ReadFile(haproxyPath + "/queue")
-	if err != nil {
-		panic(err)
-		//return false,fmt.Errorf("Error in reading the queue File:%s", err)
-	}
-	fileContentString := string(fileContent)
-	firstClusterSlice := strings.Split(fileContentString, "\n")
-	log.Printf("File Slice:%s", firstClusterSlice)
-	log.Println(len(firstClusterSlice))
-	if firstClusterSlice[0] == cluster {
-		log.Printf("Match the String:%s,%s", cluster, firstClusterSlice[0])
-		//return true, nil
-	}
-	if !strings.Contains(fileContentString, cluster) {
-		f, err := os.OpenFile(haproxyPath+"/queue", os.O_APPEND|os.O_RDWR, 0755)
-		defer f.Close()
-		if err != nil {
-			log.Printf("Error in Writing to queue File:%s", err)
-			//return false, fmt.Errorf("Error in Writing to File:%s", err)
-		}
-		_, err = f.WriteString(cluster + "\n")
-		if err != nil {
-			log.Printf("Error in Writing to queue File:%s", err)
-			//return false, fmt.Errorf("Error in Writing to File:%s", err)
-		}
-		f.Sync()
-	}
-	//return false, nil
-}
-
 //RemoveFromQueue ...
 func RemoveFromQueue(w http.ResponseWriter, r *http.Request) {
 	cluster := strings.Split(r.URL.Path, "/")[2]
