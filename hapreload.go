@@ -55,22 +55,21 @@ type Service struct {
 	Hostmachine string
 	// Port on Hostmachine where service runs
 	Port string
-	//ClusterName
-	ClusterName string
 	//action to be added or to be deleted
 	Action string
 }
 
 // Services ...
 type Services struct {
-	Services    []Service
-	ClusterName string
-	EpocTime    int64
+	Services              []Service
+	ID                    string
+	EnableFileBasedReload bool
 }
 
-//ReloadDetails ...
-type ReloadDetails struct {
-	Time string
+//ReloadStatus ...
+type ReloadStatus struct {
+	Time   string
+	Result bool
 }
 
 // Haproxy ...
@@ -99,7 +98,7 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 
 		log.Printf("Add service %s:%s", service.HaproxyURLs, service.Port)
 		//Dont add the HAP Rule for the Service Which as to be deleted.
-		if service.Action == "Remove" {
+		if service.Action == "Remove" && services.ID != "" {
 			continue
 		}
 		data := struct {
@@ -143,13 +142,13 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		f, err := os.OpenFile(confPath+"/"+service.ACL+frontendType, os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
 			*result = 0
-			return err
+			return fmt.Errorf("Error in creating the frontend files, Error:%s", err)
 		}
 		// fill in the template
 		err = tmpl.Execute(f, data)
 		if err != nil {
 			*result = 0
-			return err
+			return fmt.Errorf("Error in creating the frontend template, Error:%s", err)
 		}
 
 		// Generate backend entry
@@ -157,12 +156,12 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		f, err = os.OpenFile(confPath+"/"+service.ACL+".backend", os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
 			*result = 0
-			return err
+			return fmt.Errorf("Error in creating the backend files, Error:%s", err)
 		}
 		err = tmpl.Execute(f, data)
 		if err != nil {
 			*result = 0
-			return err
+			return fmt.Errorf("Error in creating the frontend template, Error:%s", err)
 		}
 	}
 
@@ -172,17 +171,22 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		f, err := os.OpenFile(confPath+"/"+".default_backend", os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
 			*result = 0
-			return err
+			return fmt.Errorf("Error in creating the default files, Error:%s", err)
 		}
 		err = tmpl.Execute(f, defaultBackend)
 		if err != nil {
 			*result = 0
-			return err
+			return fmt.Errorf("Error in creating the template default, Error:%s", err)
 		}
 	}
 
 	//join all the configs
 	if err := h.generateCfg(); err != nil {
+		for _, service := range services.Services {
+			log.Printf("Remove service %s:%s", service.HaproxyURLs, service.Port)
+			sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
+			sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
+		}
 		*result = 0
 		return err
 	}
@@ -200,10 +204,26 @@ func (h *Haproxy) Add(r *http.Request, services *Services, result *Result) error
 		*result = 0
 		return err
 	}
-
-	if err := h.AddToReloadFile(services.ClusterName); err != nil {
-		*result = 0
-		return err
+	if services.EnableFileBasedReload {
+		if err := h.AddToReloadFile(services.ID); err != nil {
+			for _, service := range services.Services {
+				log.Printf("Remove service %s:%s", service.HaproxyURLs, service.Port)
+				sh.Command("rm", "-f", confPath+"/"+service.ACL+".backend").Run()
+				sh.Command("rm", "-f", confPath+"/"+service.ACL+".frontend").Run()
+			}
+			if err := h.generateCfg(); err != nil {
+				*result = 0
+				return err
+			}
+			*result = 0
+			return err
+		}
+	} else {
+		//Reload Haproxy for Non-Swarm Setup[i.e Standalone containers].
+		if err := h.ReloadHaproxy(); err != nil {
+			*result = 0
+			return err
+		}
 	}
 
 	*result = 1
@@ -234,7 +254,7 @@ func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) er
 		return err
 	}
 
-	if err := h.AddToReloadFile(services.ClusterName); err != nil {
+	if err := h.AddToReloadFile(services.ID); err != nil {
 		*result = 0
 		return err
 	}
@@ -245,11 +265,14 @@ func (h *Haproxy) Remove(r *http.Request, services *Services, result *Result) er
 }
 
 func (h *Haproxy) generateCfg() error {
+	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
+		return fmt.Errorf("LOCKED")
+	}
 	if _, err := os.Stat(haproxyPath + "/haproxy.cfg"); !os.IsNotExist(err) {
 		currentTime := string(time.Now().Format("20060102150405"))
 		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+currentTime)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error in backing up Haproxy.cfg: %s", err)
 		}
 	}
 
@@ -259,12 +282,12 @@ func (h *Haproxy) generateCfg() error {
 		// walk all files in the directory
 		filepath.Walk(confPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return err
+				return fmt.Errorf("Error in walk through director of conf Folder: %s", err)
 			}
 			if !info.IsDir() && strings.HasSuffix(info.Name(), part) {
 				b, err := ioutil.ReadFile(path)
 				if err != nil {
-					return err
+					return fmt.Errorf("Error in Generating the Haproxy.cfg: %s", err)
 				}
 				haproxyCfg = append(haproxyCfg, b...)
 			}
@@ -311,48 +334,33 @@ func (h *Haproxy) ReloadHaproxy() error {
 }
 
 //Reload ...
-func (h *Haproxy) Reload(r *http.Request, reloadDetails *ReloadDetails, result *Result) error {
-	log.Printf("%s: Cron Reload Started", reloadDetails.Time)
+func (h *Haproxy) Reload(r *http.Request, reloadStatus *ReloadStatus, result *Result) error {
+	log.Printf("%s: Cron Reload Started", reloadStatus.Time)
 	if err := h.ReloadHaproxy(); err != nil {
-		log.Printf("%s: Cron Reload Failed Reason:%s", reloadDetails.Time, err)
-		if _, rnerr := os.Stat(haproxyPath + "/toReload"); !os.IsNotExist(rnerr) {
-			rnerr := os.Rename(haproxyPath+"/toReload", haproxyPath+"/reloadFailed")
-			if rnerr != nil {
-				log.Printf("%s: Cron Reload Failed Rename to reloadFailed File:%s", reloadDetails.Time, rnerr)
-				*result = 0
-				return fmt.Errorf("Failed to rename the toReload reloadSuccess:%s", rnerr)
-			}
-		}
-		log.Printf("%s: Cron Reload Finished", reloadDetails.Time)
+		log.Printf("%s: Cron Reload Failed Reason:%s", reloadStatus.Time, err)
 		*result = 0
 		return err
 	}
-	log.Printf("%s: Cron Reload Success", reloadDetails.Time)
-	if _, rnerr := os.Stat(haproxyPath + "/toReload"); !os.IsNotExist(rnerr) {
-		rnerr := os.Rename(haproxyPath+"/toReload", haproxyPath+"/reloadSuccess")
-		if rnerr != nil {
-			log.Printf("%s: Cron Reload Failed Rename to reloadSuccess File:%s", reloadDetails.Time, rnerr)
-			*result = 0
-			return fmt.Errorf("Failed to rename the toReload reloadSuccess:%s", rnerr)
-		}
-	}
-	log.Printf("%s: Cron Reload Finished", reloadDetails.Time)
+	log.Printf("%s: Cron Reload Success", reloadStatus.Time)
 	*result = 1
 	return nil
 }
 
 // ValidateHaproxy ...
 func (h *Haproxy) ValidateHaproxy() error {
+	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
+		return fmt.Errorf("LOCKED")
+	}
 	session := sh.NewSession()
 	err := session.Command("haproxy", "-c", "-f", haproxyPath+"/haproxy.cfg").Run()
 	if err != nil {
-		return err
+		return fmt.Errorf("Validation Status: Error in Hap Config: %s", err)
 	}
 	return nil
 }
 
 // LockForReload ...
-func (h *Haproxy) LockForReload(r *http.Request, reloadDetails *ReloadDetails, result *Result) error {
+func (h *Haproxy) LockForReload(r *http.Request, reloadStatus *ReloadStatus, result *Result) error {
 	if _, err := os.Stat(haproxyPath + "/toReload"); os.IsNotExist(err) {
 		*result = 0
 		return fmt.Errorf("toReload_File_Absent")
@@ -383,8 +391,39 @@ func (h *Haproxy) LockForReload(r *http.Request, reloadDetails *ReloadDetails, r
 }
 
 // ReleaseReloadLock ...
-func (h *Haproxy) ReleaseReloadLock(r *http.Request, reloadDetails *ReloadDetails, result *Result) error {
+func (h *Haproxy) ReleaseReloadLock(r *http.Request, reloadStatus *ReloadStatus, result *Result) error {
 	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
+		if reloadStatus.Result == true {
+			if _, ferr := os.Stat(haproxyPath + "/toReload"); !os.IsNotExist(ferr) {
+				rnerr := os.Rename(haproxyPath+"/toReload", haproxyPath+"/reloadSuccess")
+				if rnerr != nil {
+					session := sh.NewSession()
+					err := session.Command("rm", "-f", haproxyPath+"/lock").Run()
+					if err != nil {
+						*result = 0
+						return fmt.Errorf("Failed to remove the Lock File when trying to rename toRelaod to reloadSuccess:%s", err)
+					}
+					log.Printf("%s: Cron Reload Failed Rename to reloadSuccess File:%s", reloadStatus.Time, rnerr)
+					*result = 0
+					return fmt.Errorf("Failed to rename the toReload reloadSuccess:%s", rnerr)
+				}
+			}
+		} else {
+			if _, ferr := os.Stat(haproxyPath + "/toReload"); !os.IsNotExist(ferr) {
+				rnerr := os.Rename(haproxyPath+"/toReload", haproxyPath+"/reloadFailed")
+				if rnerr != nil {
+					session := sh.NewSession()
+					err := session.Command("rm", "-f", haproxyPath+"/lock").Run()
+					if err != nil {
+						*result = 0
+						return fmt.Errorf("Failed to remove the Lock File when trying to rename toRelaod to reloadFailed:%s", err)
+					}
+					log.Printf("%s: Cron Reload Failed Rename to reloadFailed File:%s", reloadStatus.Time, rnerr)
+					*result = 0
+					return fmt.Errorf("Failed to rename the toReload reloadFailed:%s", rnerr)
+				}
+			}
+		}
 		session := sh.NewSession()
 		err := session.Command("rm", "-f", haproxyPath+"/lock").Run()
 		if err != nil {
@@ -403,8 +442,23 @@ func (h *Haproxy) CheckReloadStatus(r *http.Request, services *Services, result 
 		return fmt.Errorf("LOCKED")
 	}
 	if _, err := os.Stat(haproxyPath + "/toReload"); !os.IsNotExist(err) {
-		*result = 0
-		return fmt.Errorf("WAITING")
+		fileContent, err := ioutil.ReadFile(haproxyPath + "/toReload")
+		if err != nil {
+			*result = 0
+			return fmt.Errorf("Error in reading the toReload File:%s", err)
+		}
+		fileContentString := string(fileContent)
+		clusterPresent := false
+		fileContentSlice := strings.Split(fileContentString, "\n")
+		for _, cluster := range fileContentSlice {
+			if cluster == services.ID {
+				clusterPresent = true
+			}
+		}
+		if clusterPresent {
+			*result = 0
+			return fmt.Errorf("WAITING")
+		}
 	}
 	if _, err := os.Stat(haproxyPath + "/reloadSuccess"); !os.IsNotExist(err) {
 		fileContent, err := ioutil.ReadFile(haproxyPath + "/reloadSuccess")
@@ -413,7 +467,7 @@ func (h *Haproxy) CheckReloadStatus(r *http.Request, services *Services, result 
 			return fmt.Errorf("Error in reading the reloadSuccess File:%s", err)
 		}
 		fileContentString := string(fileContent)
-		if strings.Contains(fileContentString, services.ClusterName) {
+		if strings.Contains(fileContentString, services.ID) {
 			*result = 1
 			return nil
 		}
@@ -425,7 +479,7 @@ func (h *Haproxy) CheckReloadStatus(r *http.Request, services *Services, result 
 			return fmt.Errorf("Error in reading the reloadFailed File:%s", err)
 		}
 		fileContentString := string(fileContent)
-		if strings.Contains(fileContentString, services.ClusterName) {
+		if strings.Contains(fileContentString, services.ID) {
 			*result = 0
 			return fmt.Errorf("Hap Reload Failed Cluster name found in reloadFailed File:%s", err)
 		}
@@ -446,7 +500,7 @@ func (h *Haproxy) Generate(r *http.Request, service *Service, result *Result) er
 }
 
 //BringIntoLB ...
-func (h *Haproxy) BringIntoLB(r *http.Request, reloadDetails *ReloadDetails, result *Result) error {
+func (h *Haproxy) BringIntoLB(r *http.Request, ReloadStatus *ReloadStatus, result *Result) error {
 	session := sh.NewSession()
 	err := session.Command("touch", "/usr/local/etc/live").Run()
 	if err != nil {
@@ -458,7 +512,7 @@ func (h *Haproxy) BringIntoLB(r *http.Request, reloadDetails *ReloadDetails, res
 }
 
 //BringOutOfLB ...
-func (h *Haproxy) BringOutOfLB(r *http.Request, reloadDetails *ReloadDetails, result *Result) error {
+func (h *Haproxy) BringOutOfLB(r *http.Request, ReloadStatus *ReloadStatus, result *Result) error {
 	session := sh.NewSession()
 	err := session.Command("rm", "-f", "/usr/local/etc/live").Run()
 	if err != nil {
@@ -469,8 +523,8 @@ func (h *Haproxy) BringOutOfLB(r *http.Request, reloadDetails *ReloadDetails, re
 	return nil
 }
 
-//AddToReloadFile ...
-func (h *Haproxy) AddToReloadFile(clusterName string) error {
+//AddToReloadFile ... id -> refers to clusterName
+func (h *Haproxy) AddToReloadFile(ID string) error {
 	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
 		return fmt.Errorf("LOCKED")
 	}
@@ -486,12 +540,10 @@ func (h *Haproxy) AddToReloadFile(clusterName string) error {
 		return fmt.Errorf("Error in reading the toReload File:%s", err)
 	}
 	fileContentString := string(fileContent)
-	log.Println(fileContentString)
-	log.Println(clusterName)
 	clusterPresent := false
 	fileContentSlice := strings.Split(fileContentString, "\n")
-	for _, cluster := range fileContentSlice {
-		if cluster == clusterName {
+	for _, clusterID := range fileContentSlice {
+		if clusterID == ID {
 			clusterPresent = true
 		}
 	}
@@ -501,7 +553,7 @@ func (h *Haproxy) AddToReloadFile(clusterName string) error {
 		if err != nil {
 			return fmt.Errorf("Error in Writing to toReload File:%s", err)
 		}
-		_, err = f.WriteString(clusterName + "\n")
+		_, err = f.WriteString(ID + "\n")
 		if err != nil {
 			return fmt.Errorf("Error in Writing to toReload File:%s", err)
 		}
@@ -511,7 +563,7 @@ func (h *Haproxy) AddToReloadFile(clusterName string) error {
 }
 
 //KillHAP ...
-func (h *Haproxy) KillHAP(r *http.Request, reloadDetails *ReloadDetails, result *Result) error {
+func (h *Haproxy) KillHAP(r *http.Request, ReloadStatus *ReloadStatus, result *Result) error {
 	if _, err := os.Stat("/var/run/haproxy.pid"); !os.IsNotExist(err) {
 		session := sh.NewSession()
 		err = session.Command("/usr/bin/kill.sh").Run()
@@ -571,4 +623,3 @@ func main() {
 	//r.HandleFunc("/Removefromqueue/{cluster}", RemoveFromQueue).Methods("POST")
 	http.ListenAndServe(":34015", r)
 }
-
