@@ -9,8 +9,9 @@ RUN mkdir -p /etc/rsyslog.d
 RUN echo "if (\$programname == 'haproxy') then -/var/log/haproxy.log" > /etc/rsyslog.d/haproxy.conf
 
 ADD hapreload /usr/bin/hapreload
+ADD kill.sh /usr/bin/kill.sh
 ADD start.sh /usr/bin/start.sh
 ADD reload.sh /usr/bin/reload.sh
-RUN chmod +x /usr/bin/start.sh /usr/bin/reload.sh
+RUN chmod +x /usr/bin/start.sh /usr/bin/reload.sh /usr/bin/kill.sh
 
 CMD ["/usr/bin/start.sh"]
