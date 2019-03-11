@@ -26,3 +26,4 @@ haproxy.cfg.BAK*
 test/
 *.backend
 *.frontend
+hapreload
