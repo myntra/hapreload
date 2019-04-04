@@ -47,11 +47,16 @@ type FrontendConfig struct {
 
 // Backend ...
 type Backend struct {
-	Name   string   `yaml:"name" json:"name"`
-	IPs    []string `yaml:"IPs" json:"IPs"`
-	Server string   `yaml:"server" json:"server"`
-	Port   int      `yaml:"port" json:"port"`
-	Tail   string   `yaml:"tail" json:"tail"`
+	Name    string   `yaml:"name" json:"name"`
+	Servers []Server `yaml:"servers" json:"servers"`
+	Port    int      `yaml:"port" json:"port"`
+	Tail    string   `yaml:"tail" json:"tail"`
+}
+
+// Server ...
+type Server struct {
+	Name string `yaml:"name" json:"name"`
+	IP   string `yaml:"IP" json:"IP"`
 }
 
 // HaproxyV2 ...
@@ -157,12 +162,18 @@ func (h *HaproxyV2) Update(r *http.Request, services *ServicesV2, result *Result
 		backends := ""
 		for _, singleBackend := range service.Backends {
 			backends += "\n\nbackend " + singleBackend.Name
-			for index, singleIP := range singleBackend.IPs {
+			for _, singleServer := range singleBackend.Servers {
 				backends += "\n\tserver " +
-					singleBackend.Server + "-" + strconv.Itoa(index) + " " +
-					singleIP + ":" + strconv.Itoa(singleBackend.Port) + " " +
+					singleServer.Name + " " +
+					singleServer.IP + ":" + strconv.Itoa(singleBackend.Port) + " " +
 					singleBackend.Tail
 			}
+			// for index, singleIP := range singleBackend.IPs {
+			// 	backends += "\n\tserver " +
+			// 		singleBackend.Server + "-" + strconv.Itoa(index) + " " +
+			// 		singleIP + ":" + strconv.Itoa(singleBackend.Port) + " " +
+			// 		singleBackend.Tail
+			// }
 		}
 		err := ioutil.WriteFile(confPath+"/"+service.ID+".backend", []byte(backends), 0777)
 		if err != nil {
