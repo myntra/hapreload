@@ -1,4 +1,4 @@
-FROM haproxy:1.9.4
+FROM haproxy:1.8.7
 EXPOSE 34015 80 443
 
 RUN apt-get update \
