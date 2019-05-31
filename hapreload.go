@@ -636,7 +636,7 @@ func main() {
 		s.RegisterService(haproxy, "")
 		r.Handle("/haproxy", s)
 	}
-	http.ListenAndServe(":34015", r)
+	http.ListenAndServe("0.0.0.0:34015", r)
 }
 
 func createLiveFile(err error) {
