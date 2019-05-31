@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -636,7 +637,15 @@ func main() {
 		s.RegisterService(haproxy, "")
 		r.Handle("/haproxy", s)
 	}
-	http.ListenAndServe("0.0.0.0:34015", r)
+	server := &http.Server{
+		Handler: r,
+	}
+	l, err := net.Listen("tcp4", ":34015")
+	if err != nil {
+		log.Fatal(err)
+	}
+	server.Serve(l)
+	// http.ListenAndServe("0.0.0.0:34015", r)
 }
 
 func createLiveFile(err error) {
