@@ -616,6 +616,15 @@ func main() {
 	if os.Getenv("HAPROXY_PATH") != "" {
 		haproxyPath = os.Getenv("HAPROXY_PATH")
 	}
+	go func() {
+		http.HandleFunc("/_admin/hapconfig", handleHAPConfig)
+		// go func() {
+		log.Println("Started the server at :3480")
+		if err := http.ListenAndServe(":3480", nil); err != nil {
+			panic(err)
+		}
+
+	}()
 	s := rpc.NewServer()
 	s.RegisterCodec(json.NewCodec(), "application/json")
 	r := mux.NewRouter()
@@ -630,8 +639,11 @@ func main() {
 		r.Handle("/haproxy", s)
 	case "v2":
 		haproxy := new(HaproxyV2)
-		haproxy.generateCfg()
-		err := haproxy.StartHaproxy()
+		_, err := haproxy.generateCfg()
+		if err != nil {
+			panic(err)
+		}
+		err = haproxy.StartHaproxy()
 		createLiveFile(err)
 		s.RegisterService(haproxy, "")
 		r.Handle("/haproxy", s)
@@ -646,5 +658,16 @@ func createLiveFile(err error) {
 		if err != nil {
 			log.Println("Failed to create the live File")
 		}
+	}
+}
+
+func handleHAPConfig(res http.ResponseWriter, req *http.Request) {
+	contentInBytes, err := ioutil.ReadFile("/usr/local/etc/haproxy/haproxy.cfg")
+	res.Header().Add("Content-Type", "text/plain")
+	res.Header().Add("X-Content-Type-Options", "nosniff")
+	if err != nil {
+		res.Write([]byte(err.Error()))
+	} else {
+		res.Write(contentInBytes)
 	}
 }

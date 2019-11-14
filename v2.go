@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -62,17 +63,30 @@ type Server struct {
 // HaproxyV2 ...
 type HaproxyV2 int
 
-func (h *HaproxyV2) generateCfg() error {
-	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
-		return fmt.Errorf("LOCKED")
+func (h *HaproxyV2) generateCfg() (isReloadNeeded bool, err error) {
+	if _, err := os.Stat(haproxyPath + "/lock"); err == nil {
+		return isReloadNeeded, fmt.Errorf("LOCKED")
 	}
-	if _, err := os.Stat(haproxyPath + "/haproxy.cfg"); !os.IsNotExist(err) {
-		currentTime := string(time.Now().Format("20060102150405"))
+	currentTime := string(time.Now().Format("20060102150405"))
+	oldCfg := []byte{}
+	if _, err := os.Stat(haproxyPath + "/haproxy.cfg"); err == nil {
 		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+currentTime)
 		if err != nil {
-			return fmt.Errorf("Error in backing up Haproxy.cfg: %s", err)
+			return isReloadNeeded, fmt.Errorf("Error in backing up Haproxy.cfg: %s", err)
 		}
+		// oldCfg
+		oldCfg, err = ioutil.ReadFile(haproxyPath + "/haproxy.cfg.BAK." + currentTime)
+		if err != nil {
+			err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+currentTime)
+			if err != nil {
+				return isReloadNeeded, fmt.Errorf("Error while reverting to backup: %s", err)
+			}
+			return isReloadNeeded, err
+		}
+	} else if !os.IsNotExist(err) {
+		return isReloadNeeded, err
 	}
+
 	var haproxyCfg []byte
 	var partFunc = func(part string) {
 		// walk all files in the directory
@@ -110,11 +124,33 @@ func (h *HaproxyV2) generateCfg() error {
 		partFunc(parts[i])
 	}
 	//write the file
-	err := ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
+	err = ioutil.WriteFile(haproxyPath+"/haproxy.cfg", haproxyCfg, 0777)
 	if err != nil {
-		return err
+		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+currentTime)
+		if err != nil {
+			return isReloadNeeded, fmt.Errorf("Error while reverting to backup: %s", err)
+		}
+		return isReloadNeeded, err
 	}
-	return nil
+	newCfg, err := ioutil.ReadFile(haproxyPath + "/haproxy.cfg")
+	if err != nil {
+		err := os.Rename(haproxyPath+"/haproxy.cfg", haproxyPath+"/haproxy.cfg.BAK."+currentTime)
+		if err != nil {
+			return isReloadNeeded, fmt.Errorf("Error while reverting to backup: %s", err)
+		}
+		return isReloadNeeded, err
+	}
+	if !bytes.Equal(oldCfg, newCfg) {
+		isReloadNeeded = true
+	} else {
+		if _, err = os.Stat(haproxyPath + "/haproxy.cfg.BAK." + currentTime); err == nil {
+			err = os.Remove(haproxyPath + "/haproxy.cfg.BAK." + currentTime)
+			if err != nil {
+				return isReloadNeeded, fmt.Errorf("Error while removing file without a change of content: %s", err)
+			}
+		}
+	}
+	return isReloadNeeded, nil
 }
 
 // StartHaproxy ...
@@ -192,23 +228,31 @@ func (h *HaproxyV2) Update(r *http.Request, services *ServicesV2, result *Result
 			}
 		}
 	}
-	// join all the configs
-	if err := h.generateCfg(); err != nil {
+	// join all the
+	var (
+		isReloadNeeded bool
+		err            error
+	)
+	if isReloadNeeded, err = h.generateCfg(); err != nil {
 		for _, service := range services.Services {
 			removeServiceConfigurations(service, confPath)
 		}
-		if err := h.generateCfg(); err != nil {
+		if isReloadNeeded, err = h.generateCfg(); err != nil {
 			*result = 0
 			return err
 		}
 		*result = 0
 		return err
 	}
+	if !isReloadNeeded {
+		*result = 1
+		return nil
+	}
 	if err := validateHaproxy(); err != nil {
 		for _, service := range services.Services {
 			removeServiceConfigurations(service, confPath)
 		}
-		if err := h.generateCfg(); err != nil {
+		if _, err = h.generateCfg(); err != nil {
 			*result = 0
 			return err
 		}
@@ -220,14 +264,14 @@ func (h *HaproxyV2) Update(r *http.Request, services *ServicesV2, result *Result
 			for _, service := range services.Services {
 				removeServiceConfigurations(service, confPath)
 			}
-			if err := h.generateCfg(); err != nil {
+			if _, err = h.generateCfg(); err != nil {
 				*result = 0
 				return err
 			}
 			*result = 0
 			return err
 		}
-	} else {
+	} else if isReloadNeeded {
 		if err := reloadHaproxy(); err != nil {
 			*result = 0
 			return err
