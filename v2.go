@@ -284,11 +284,12 @@ func (h *HaproxyV2) Update(r *http.Request, services *ServicesV2, result *Result
 func removeServiceConfigurations(service ServiceV2, confPath string) {
 	log.Printf("Remove service %+v", service)
 	sh.Command("rm", "-f", confPath+"/"+service.ID+".backend").Run()
+	// This whole filepath looks redundant
 	filepath.Walk(confPath, func(path string, fileInfo os.FileInfo, err error) error {
 		if err != nil {
-			return fmt.Errorf("Error in walk through director of conf Folder: %s", err)
+			return fmt.Errorf("Error in walking through the conf folder : %s", err)
 		}
-		if !fileInfo.IsDir() && strings.Contains(fileInfo.Name(), ".frontend") && strings.HasPrefix(fileInfo.Name(), service.ID) {
+		if !fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), service.ID+".frontend") {
 			sh.Command("rm", "-f", confPath+"/"+fileInfo.Name()).Run()
 		}
 		return nil
