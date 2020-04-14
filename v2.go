@@ -173,6 +173,7 @@ func (h *HaproxyV2) Update(r *http.Request, services *ServicesV2, result *Result
 		if service.Action == "Remove" {
 			continue
 		}
+		frontendsMap := make(map[string]string)
 		for _, singleFrontend := range service.Frontends {
 			frontendACLs := "\n"
 			frontendType := "." + singleFrontend.FrontendName
@@ -188,7 +189,11 @@ func (h *HaproxyV2) Update(r *http.Request, services *ServicesV2, result *Result
 				}
 				frontendACLs = frontendACLs + "\n\tuse_backend " + singleFrontendConfig.UseBackend + " if " + singleFrontendConfig.ACLName
 			}
+			frontendsMap[frontendType] = frontendsMap[frontendType] + frontendACLs
 			log.Println(frontendACLs)
+
+		}
+		for frontendType, frontendACLs := range frontendsMap {
 			err := ioutil.WriteFile(confPath+"/"+service.ID+frontendType, []byte(frontendACLs), 0777)
 			if err != nil {
 				*result = 0
