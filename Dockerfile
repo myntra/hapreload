@@ -12,6 +12,10 @@ ADD hapreload /usr/bin/hapreload
 ADD kill.sh /usr/bin/kill.sh
 ADD start.sh /usr/bin/start.sh
 ADD reload.sh /usr/bin/reload.sh
-RUN chmod +x /usr/bin/start.sh /usr/bin/reload.sh /usr/bin/kill.sh
+
+ADD haproxy /etc/logrotate.d/haproxy
+ADD logrotate /etc/cron.hourly/logrotate
+
+RUN chmod +x /usr/bin/start.sh /usr/bin/reload.sh /usr/bin/kill.sh /etc/logrotate.d/haproxy /etc/cron.hourly/logrotate
 
 CMD ["/usr/bin/start.sh"]
