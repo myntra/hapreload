@@ -1,0 +1,5 @@
+###
+frontend frontend8080
+	bind *:8080 proto h2
+	capture request header HOST len 40
+###

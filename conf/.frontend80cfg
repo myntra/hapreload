@@ -1,0 +1,16 @@
+###
+backend corednsapi
+	server corednsapi 127.0.0.1:5380 check inter 10000
+###
+backend hapreload
+	server hapreload 127.0.0.1:3480 check inter 10000
+###
+frontend frontend80
+	bind *:80
+	capture request header HOST len 40
+###
+	acl CoreDNSAPI path_beg -i /_admin/dnsconfig
+	use_backend corednsapi if CoreDNSAPI
+###
+	acl HAPReload path_beg -i /_admin/hapconfig
+	use_backend hapreload if HAPReload

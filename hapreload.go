@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -8,10 +9,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
-
-	"strconv"
 
 	sh "github.com/codeskyblue/go-sh"
 	"github.com/gorilla/mux"
@@ -314,6 +314,10 @@ func (h *Haproxy) generateCfg() error {
 
 // StartHaproxy ...
 func (h *Haproxy) StartHaproxy() error {
+	return startHaproxy()
+}
+
+func startHaproxy() error {
 	// restart haproxy container
 	session := sh.NewSession()
 	err := session.Command("haproxy", "-p", "/var/run/haproxy.pid", "-f", "/usr/local/etc/haproxy/haproxy.cfg").Run()
@@ -325,6 +329,10 @@ func (h *Haproxy) StartHaproxy() error {
 
 // ReloadHaproxy ...
 func (h *Haproxy) ReloadHaproxy() error {
+	return reloadHaproxy()
+}
+
+func reloadHaproxy() error {
 	session := sh.NewSession()
 	err := session.Command("/usr/bin/reload.sh").Run()
 	if err != nil {
@@ -348,6 +356,10 @@ func (h *Haproxy) Reload(r *http.Request, reloadStatus *ReloadStatus, result *Re
 
 // ValidateHaproxy ...
 func (h *Haproxy) ValidateHaproxy() error {
+	return validateHaproxy()
+}
+
+func validateHaproxy() error {
 	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
 		return fmt.Errorf("LOCKED")
 	}
@@ -525,6 +537,10 @@ func (h *Haproxy) BringOutOfLB(r *http.Request, ReloadStatus *ReloadStatus, resu
 
 //AddToReloadFile ... id -> refers to clusterName
 func (h *Haproxy) AddToReloadFile(ID string) error {
+	return addToReloadFile(ID)
+}
+
+func addToReloadFile(ID string) error {
 	if _, err := os.Stat(haproxyPath + "/lock"); !os.IsNotExist(err) {
 		return fmt.Errorf("LOCKED")
 	}
@@ -591,22 +607,51 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	version := flag.String("version", "v1", "v1 will run the old version while v2 will run the new version")
+	flag.Parse()
 	//if running without docker
 	if os.Getenv("CONF_PATH") != "" {
 		confPath = os.Getenv("CONF_PATH")
 	}
-
 	if os.Getenv("HAPROXY_PATH") != "" {
 		haproxyPath = os.Getenv("HAPROXY_PATH")
 	}
+	go func() {
+		http.HandleFunc("/_admin/hapconfig", handleHAPConfig)
+		// go func() {
+		log.Println("Started the server at :3480")
+		if err := http.ListenAndServe(":3480", nil); err != nil {
+			panic(err)
+		}
 
+	}()
 	s := rpc.NewServer()
 	s.RegisterCodec(json.NewCodec(), "application/json")
-	haproxy := new(Haproxy)
-	// generate default haproxy.cfg
-	log.Println("Generating default haproxy.cfg")
-	haproxy.generateCfg()
-	err := haproxy.StartHaproxy()
+	r := mux.NewRouter()
+	r.HandleFunc("/health", HealthCheck).Methods("HEAD")
+	switch *version {
+	case "v1":
+		haproxy := new(Haproxy)
+		haproxy.generateCfg()
+		err := haproxy.StartHaproxy()
+		createLiveFile(err)
+		s.RegisterService(haproxy, "")
+		r.Handle("/haproxy", s)
+	case "v2":
+		haproxy := new(HaproxyV2)
+		_, err := haproxy.generateCfg()
+		if err != nil {
+			panic(err)
+		}
+		err = haproxy.StartHaproxy()
+		createLiveFile(err)
+		s.RegisterService(haproxy, "")
+		r.Handle("/haproxy", s)
+	}
+	http.ListenAndServe(":34015", r)
+}
+
+func createLiveFile(err error) {
 	if err == nil {
 		session := sh.NewSession()
 		err = session.Command("touch", "/usr/local/etc/live").Run()
@@ -614,12 +659,15 @@ func main() {
 			log.Println("Failed to create the live File")
 		}
 	}
-	s.RegisterService(haproxy, "")
-	r := mux.NewRouter()
-	r.Handle("/haproxy", s)
-	//Route Added for Hap Health Check
-	log.Println("New routes")
-	r.HandleFunc("/health", HealthCheck).Methods("HEAD")
-	//r.HandleFunc("/Removefromqueue/{cluster}", RemoveFromQueue).Methods("POST")
-	http.ListenAndServe(":34015", r)
+}
+
+func handleHAPConfig(res http.ResponseWriter, req *http.Request) {
+	contentInBytes, err := ioutil.ReadFile("/usr/local/etc/haproxy/haproxy.cfg")
+	res.Header().Add("Content-Type", "text/plain")
+	res.Header().Add("X-Content-Type-Options", "nosniff")
+	if err != nil {
+		res.Write([]byte(err.Error()))
+	} else {
+		res.Write(contentInBytes)
+	}
 }

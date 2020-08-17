@@ -1,18 +1,18 @@
 ###
 defaults
-        mode        http
-        log         global
-        option      dontlognull
-        option      httpclose
-        option      httplog
-        option      logasap
-        option      forwardfor
-        option      redispatch
+        mode http
+        log global
+        option dontlognull
+        option httpclose
+        option httplog
+        option logasap
+        option forwardfor
+        option redispatch
         timeout connect 15000 # default 10 second time out if a backend is not found
         timeout client 300000
         timeout server 300000
-        maxconn     60000
-        retries     3
+        maxconn 60000
+        retries 3
         stats enable
-        stats realm   Haproxy
-        #log-format  %ci:%cp\ [%t]\ %ft\ %b/%s\ %Tw/%Tc/%Tt\ %B\ %ts\ \%ac/%fc/%bc/%sc/%rc\ %sq/%bq\ %hr\ %r
+        stats realm Haproxy
+        option http-use-htx
