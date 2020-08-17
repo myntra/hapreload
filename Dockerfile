@@ -14,7 +14,7 @@ ADD start.sh /usr/bin/start.sh
 ADD reload.sh /usr/bin/reload.sh
 
 ADD haproxy /etc/logrotate.d/haproxy \
-    && chmod 644 /etc/logrotate.d/haproxy
+RUN chmod 644 /etc/logrotate.d/haproxy
 ADD logrotate /etc/cron.hourly/logrotate
 
 RUN chmod +x /usr/bin/start.sh /usr/bin/reload.sh /usr/bin/kill.sh /etc/cron.hourly/logrotate
